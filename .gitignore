@@ -64,6 +64,7 @@ plugins/app_builder/generated_apps/
 logs/
 *.tmp
 *.temp
+nohup.out
 
 # ======================
 # IDE & Editor
@@ -85,6 +86,7 @@ Thumbs.db
 # ======================
 # Caches & Compiled
 # ======================
+**/ __pycache__/
 nox/**/__pycache__/
 orchestrator/**/__pycache__/
 plugins/**/__pycache__/
@@ -97,5 +99,3 @@ nox_backend/**/__pycache__/
 *.old
 *.bak
 *.orig
-nohup.out.env 
-.env 
