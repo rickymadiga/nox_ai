@@ -1,0 +1,150 @@
+import logging
+from typing import Dict, List, Any
+import json
+
+logger = logging.getLogger(__name__)
+
+class ResearchAgent:
+    """
+    🔬 Research AI Agent
+    Performs multi-step research: decompose → search → analyze → validate → synthesize
+    """
+
+    def __init__(self, runtime):
+        self.runtime = runtime
+        self.name = "research_agent"
+        logger.info(f"[{self.name}] Initialized")
+
+    async def run(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute full research workflow"""
+        
+        research_query = task.get("prompt", "")
+        user_id = task.get("user_id", "default")
+        research_type = task.get("research_type", "general")
+        
+        if not research_query:
+            return {
+                "agent": "research_agent",
+                "status": "error",
+                "error": "No research query provided"
+            }
+        
+        logger.info(f"[{self.name}] 🔬 Starting: {research_query[:50]}")
+        
+        try:
+            # Step 1: Decompose
+            logger.info(f"[{self.name}] Step 1: Decomposing...")
+            decomposition = await self.runtime.execute_agent("decomposer", {
+                "query": research_query,
+                "research_type": research_type
+            })
+            sub_questions = decomposition.get("sub_questions", [research_query])
+            logger.info(f"[{self.name}] ✅ Sub-questions: {len(sub_questions)}")
+            
+            # Step 2: Search
+            logger.info(f"[{self.name}] Step 2: Searching...")
+            search_results = await self.runtime.execute_agent("searcher", {
+                "queries": sub_questions,
+                "user_id": user_id
+            })
+            sources = search_results.get("sources", [])
+            logger.info(f"[{self.name}] ✅ Found {len(sources)} sources")
+            
+            # Step 3: Analyze
+            logger.info(f"[{self.name}] Step 3: Analyzing...")
+            analysis = await self.runtime.execute_agent("analyzer", {
+                "sources": sources,
+                "research_query": research_query
+            })
+            logger.info(f"[{self.name}] ✅ Analysis complete")
+            
+            # Step 4: Validate
+            logger.info(f"[{self.name}] Step 4: Validating...")
+            validation = await self.runtime.execute_agent("validator", {
+                "analysis": analysis,
+                "sources": sources,
+                "research_query": research_query
+            })
+            logger.info(f"[{self.name}] ✅ Validation complete")
+            
+            # Step 5: Synthesize
+            logger.info(f"[{self.name}] Step 5: Synthesizing...")
+            synthesis = await self.runtime.execute_agent("synthesizer", {
+                "analysis": analysis,
+                "validation": validation,
+                "sources": sources,
+                "research_query": research_query
+            })
+            logger.info(f"[{self.name}] ✅ Synthesis complete")
+            
+            # Step 6: Report
+            logger.info(f"[{self.name}] Step 6: Generating report...")
+            report = await self.runtime.execute_agent("report_generator", {
+                "query": research_query,
+                "sub_questions": sub_questions,
+                "sources": sources,
+                "analysis": analysis,
+                "validation": validation,
+                "synthesis": synthesis
+            })
+            logger.info(f"[{self.name}] ✅ Report generated")
+            
+            # Build final response
+            return {
+                "agent": "research_agent",
+                "status": "complete",
+                "action": "research",
+                "type": "research_result",
+                "research_query": research_query,
+                "research_type": research_type,
+                "sub_questions": sub_questions,
+                "sources_found": len(sources),
+                "sources": sources[:10],
+                "analysis": analysis,
+                "validation": validation,
+                "synthesis": synthesis,
+                "report": report,
+                "response": self._format_response(research_query, sources, analysis, synthesis),
+                "summary": synthesis.get("summary", f"Research on '{research_query}' completed")
+            }
+            
+        except Exception as e:
+            logger.error(f"[{self.name}] Error: {e}", exc_info=True)
+            return {
+                "agent": "research_agent",
+                "status": "error",
+                "action": "research",
+                "error": str(e),
+                "research_query": research_query,
+                "response": f"Research failed: {str(e)}"
+            }
+    
+    def _format_response(self, query: str, sources: List[Dict], analysis: Dict, synthesis: Dict) -> str:
+        """Format response for frontend"""
+        if not sources:
+            return f"📚 No sources found for: '{query}'"
+        
+        parts = [f"📚 Research Results for: {query}\n"]
+        
+        # Summary
+        if synthesis.get("summary"):
+            parts.append(f"📝 Summary:\n{synthesis['summary']}\n")
+        
+        # Findings
+        if analysis.get("findings"):
+            parts.append(f"🔍 Key Findings:")
+            for finding in analysis.get("findings", [])[:3]:
+                if isinstance(finding, dict):
+                    content = finding.get('content') or finding.get('source', '')
+                    if content:
+                        parts.append(f"  • {str(content)[:100]}")
+                else:
+                    parts.append(f"  • {str(finding)[:100]}")
+        
+        # Sources count
+        parts.append(f"\n📊 Sources: {len(sources)} found")
+        for i, src in enumerate(sources[:3], 1):
+            title = src.get('title', 'Unknown')
+            parts.append(f"  {i}. {title}")
+        
+        return "\n".join(parts)

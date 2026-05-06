@@ -1,0 +1,16 @@
+/* Dark glass UI */
+
+body {
+    background-color: #0e1117;
+}
+
+.stButton>button {
+    border-radius: 10px;
+    background: linear-gradient(90deg, #6c5ce7, #00cec9);
+    color: white;
+}
+
+.stTextArea textarea {
+    background-color: #1e2228;
+    color: white;
+}

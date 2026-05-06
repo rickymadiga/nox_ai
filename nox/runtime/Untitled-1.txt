@@ -1,0 +1,234 @@
+async def handle_prompt(self, prompt: str, user_id: str = "default_user"):
+    start_time = time.time()
+
+    try:
+        is_dev = user_id in DEV_USERS
+
+        # Smart routing
+        target_agent = await self._route_to_best_agent(prompt, user_id)
+
+        # CODE ASSISTANT ROUTE
+        if target_agent == "code_assistant":
+            code_agent = self.runtime.get_agent("code_assistant")
+            if code_agent and hasattr(code_agent, "handle"):
+                result = await code_agent.handle(prompt, {"user_id": user_id})
+                return {
+                    "response": result.get("response", "Code Assistant processed request"),
+                    "structured": result.get("structured"),
+                    "updated_files": bool(result.get("updated_files")),
+                    "from_agent": "code_assistant"
+                }
+
+        # ───── LILY AGENT ─────
+        lily = self.runtime.get_agent("lily")
+        if not lily:
+            return {"response": "❌ Lily agent not available. Please try again later."}
+
+        decision = await lily.run({
+            "prompt": prompt,
+            "user_id": user_id,
+            "context": {}
+        })
+
+        action = decision.get("action")
+        message = decision.get("message", "")
+        price = int(decision.get("price") or 0)
+
+        # QUOTE
+        if action == "quote":
+            if is_dev:
+                return {
+                    "response": f"{message}\n\n🔥 GOD MODE: This build is FREE for you.",
+                    "price": 0,
+                    "awaiting_confirmation": False
+                }
+            return {
+                "response": message,
+                "price": price,
+                "awaiting_confirmation": True
+            }
+
+        # BUILD (SYNCHRONOUS)
+        if action == "build":
+            billing = self.runtime.get_agent("billing_agent")
+            if not billing:
+                return {"response": "❌ Billing system unavailable"}
+
+            task = {
+                "prompt": str(decision.get("prompt", prompt)),
+                "user_id": user_id,
+                "context": decision.get("context") or {}
+            }
+
+            app_builder = self.runtime.get_agent("app_builder")
+            if not app_builder:
+                return {"response": "❌ App builder agent not available"}
+
+            logger.info(f"[ENGINE] Starting synchronous build for {user_id}")
+
+            # === DEV MODE - Free & Direct ===
+            if is_dev:
+                result = await app_builder.run(task)   # Run directly
+                return {
+                    "response": result.get("message", "✅ God Mode Build Completed!"),
+                    "zip": result.get("zip"),
+                    "logs": result.get("logs", []),
+                    "success": True
+                }
+
+            # === NORMAL USER - Credit Check ===
+            lock = self._billing_locks[user_id]
+            async with lock:
+                balance = billing.get_balance(user_id)
+                current_credits = (
+                    balance.get("credits") 
+                    or balance.get("available") 
+                    or balance.get("balance", 0)
+                )
+
+                if current_credits < price:
+                    return {
+                        "response": f"❌ Not enough credits. You need {price}, but you have {current_credits}."
+                    }
+
+                # Deduct credits
+                success = billing.deduct_credits(user_id, price) if hasattr(billing, "deduct_credits") else True
+                if not success:
+                    return {"response": "❌ Failed to deduct credits."}
+
+            # Run build synchronously
+            result = await app_builder.run(task)
+
+            return {
+                "response": result.get("message", "✅ Build completed successfully!"),
+                "zip": result.get("zip"),
+                "logs": result.get("logs", []),
+                "success": True
+            }
+
+        # Default
+        return {"response": message or "🤖 I received your request."}
+
+    except Exception as e:
+        logger.error(f"[ENGINE ERROR] {e}", exc_info=True)
+        return {"response": f"❌ Internal error: {str(e)}"}
+
+        finally:
+        logger.info(f"[ENGINE] handle_prompt completed in {time.time() - start_time:.2f}s")
+        async def handle_prompt(self, prompt: str, user_id: str = "default_user"):
+        start_time = time.time()
+
+        try:
+        is_dev = user_id in DEV_USERS
+
+        # Smart routing
+        target_agent = await self._route_to_best_agent(prompt, user_id)
+
+        # CODE ASSISTANT ROUTE
+        if target_agent == "code_assistant":
+            code_agent = self.runtime.get_agent("code_assistant")
+            if code_agent and hasattr(code_agent, "handle"):
+                result = await code_agent.handle(prompt, {"user_id": user_id})
+                return {
+                    "response": result.get("response", "Code Assistant processed request"),
+                    "structured": result.get("structured"),
+                    "updated_files": bool(result.get("updated_files")),
+                    "from_agent": "code_assistant"
+                }
+
+        # ───── LILY AGENT ─────
+        lily = self.runtime.get_agent("lily")
+        if not lily:
+            return {"response": "❌ Lily agent not available. Please try again later."}
+
+        decision = await lily.run({
+            "prompt": prompt,
+            "user_id": user_id,
+            "context": {}
+        })
+
+        action = decision.get("action")
+        message = decision.get("message", "")
+        price = int(decision.get("price") or 0)
+
+        # QUOTE
+        if action == "quote":
+            if is_dev:
+                return {
+                    "response": f"{message}\n\n🔥 GOD MODE: This build is FREE for you.",
+                    "price": 0,
+                    "awaiting_confirmation": False
+                }
+            return {
+                "response": message,
+                "price": price,
+                "awaiting_confirmation": True
+            }
+
+        # BUILD (SYNCHRONOUS)
+        if action == "build":
+            billing = self.runtime.get_agent("billing_agent")
+            if not billing:
+                return {"response": "❌ Billing system unavailable"}
+
+            task = {
+                "prompt": str(decision.get("prompt", prompt)),
+                "user_id": user_id,
+                "context": decision.get("context") or {}
+            }
+
+            app_builder = self.runtime.get_agent("app_builder")
+            if not app_builder:
+                return {"response": "❌ App builder agent not available"}
+
+            logger.info(f"[ENGINE] Starting synchronous build for {user_id}")
+
+            # === DEV MODE - Free & Direct ===
+            if is_dev:
+                result = await app_builder.run(task)   # Run directly
+                return {
+                    "response": result.get("message", "✅ God Mode Build Completed!"),
+                    "zip": result.get("zip"),
+                    "logs": result.get("logs", []),
+                    "success": True
+                }
+
+            # === NORMAL USER - Credit Check ===
+            lock = self._billing_locks[user_id]
+            async with lock:
+                balance = billing.get_balance(user_id)
+                current_credits = (
+                    balance.get("credits") 
+                    or balance.get("available") 
+                    or balance.get("balance", 0)
+                )
+
+                if current_credits < price:
+                    return {
+                        "response": f"❌ Not enough credits. You need {price}, but you have {current_credits}."
+                    }
+
+                # Deduct credits
+                success = billing.deduct_credits(user_id, price) if hasattr(billing, "deduct_credits") else True
+                if not success:
+                    return {"response": "❌ Failed to deduct credits."}
+
+            # Run build synchronously
+            result = await app_builder.run(task)
+
+            return {
+                "response": result.get("message", "✅ Build completed successfully!"),
+                "zip": result.get("zip"),
+                "logs": result.get("logs", []),
+                "success": True
+            }
+
+        # Default
+        return {"response": message or "🤖 I received your request."}
+
+    except Exception as e:
+        logger.error(f"[ENGINE ERROR] {e}", exc_info=True)
+        return {"response": f"❌ Internal error: {str(e)}"}
+
+    finally:
+        logger.info(f"[ENGINE] handle_prompt completed in {time.time() - start_time:.2f}s")

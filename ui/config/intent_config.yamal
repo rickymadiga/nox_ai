@@ -1,0 +1,72 @@
+# Intent Configuration
+
+intents:
+  chat:
+    name: "Chat"
+    icon: "💬"
+    description: "General conversation and assistance"
+    requires_auth: true
+    requires_admin: false
+    cache_enabled: true
+    cache_ttl: 600
+    enabled: true
+
+  builder:
+    name: "Builder"
+    icon: "🏗️"
+    description: "Build and create components"
+    requires_auth: true
+    requires_admin: false
+    cache_enabled: true
+    cache_ttl: 300
+    enabled: true
+
+  fixer:
+    name: "Fixer"
+    icon: "🔧"
+    description: "Debug and fix issues"
+    requires_auth: true
+    requires_admin: false
+    cache_enabled: false
+    cache_ttl: 0
+    enabled: true
+
+  research:
+    name: "Research"
+    icon: "🔬"
+    description: "Research and analysis"
+    requires_auth: true
+    requires_admin: false
+    cache_enabled: true
+    cache_ttl: 300
+    enabled: true
+
+  editor:
+    name: "Editor"
+    icon: "✏️"
+    description: "Edit and modify content"
+    requires_auth: true
+    requires_admin: false
+    cache_enabled: false
+    cache_ttl: 0
+    enabled: true
+
+  history:
+    name: "History"
+    icon: "📜"
+    description: "View session history"
+    requires_auth: true
+    requires_admin: false
+    cache_enabled: true
+    cache_ttl: 300
+    enabled: true
+
+  admin:
+    name: "Admin"
+    icon: "⚙️"
+    description: "Administrative controls"
+    requires_auth: true
+    requires_admin: true
+    cache_enabled: false
+    cache_ttl: 0
+    enabled: true
