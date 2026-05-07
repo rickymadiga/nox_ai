@@ -183,11 +183,7 @@ stripe==14.4.1
 sympy==1.14.0
 tavily==1.1.0
 tenacity==9.1.4
-tensorboard==2.20.0
-tensorboard-data-server==0.7.2
-tensorflow==2.20.0
 termcolor==3.3.0
-tf_keras==2.20.1
 threadpoolctl==3.6.0
 tifffile==2026.2.16
 tokenizers==0.22.2
