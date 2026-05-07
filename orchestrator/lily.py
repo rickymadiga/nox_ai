@@ -1,6 +1,7 @@
 # lily.py — NOX GOD BRAIN v18 (Unified Routing + Debug Support + Engine Integration 🧠🔥)
 
 import time
+import re
 import logging
 from typing import Dict, Any, List, Optional
 from collections import deque
@@ -42,11 +43,8 @@ class Lily:
         }
         
         self.BUILD_PHRASES = {
-            "build", "create", "make", "develop", "generate", "i want",
-            "i need", "can you", "could you", "would you", "please make",
-            "please build", "please create", "construct", "write app",
-            "write application", "build app", "create app", "make app",
-            "build website", "create website"
+            "build", "create", "make", "develop", "generate", "write app", "build app",
+            "create app", "make app", "build website", "create website", "develop app"
         }
         
         self.REFINE_WORDS = {
@@ -57,11 +55,9 @@ class Lily:
         
         # 🔹 DEBUG WORDS (FIXED - MOVED BEFORE BUILD!)
         self.DEBUG_WORDS = {
-            "fix", "bug", "error", "debug", "traceback", "issue", "problem",
-            "crash", "exception", "failure", "not working", "help with code",
-            "code issue", "review code", "check this", "what's wrong",
-            "broken", "doesn't work", "fix this code", "debug this",
-            "find bug", "refactor", "optimize", "improve code"
+            "fix", "bug", "error", "debug", "traceback", "issue", "problem", "crash",
+            "exception", "not working", "doesn't work", "broken", "help with code",
+            "fix this", "debug this", "review code", "what's wrong"
         }
         
         # 🔹 RESEARCH WORDS
@@ -167,57 +163,70 @@ class Lily:
         return list(history)[-limit:]
 
     # ────────────────────────────────────────────────
-    # INTENT CLASSIFICATION (CRITICAL FIX!)
+    # INTENT CLASSIFICATION (Improved)
     # ────────────────────────────────────────────────
+
     def classify_intent(self, text: str, user_id: Optional[str] = None) -> str:
         """
-        Enhanced intent classification with CORRECT priority order.
-        CRITICAL: DEBUG must be checked BEFORE BUILD!
+        Improved intent classification with priority and confidence.
         """
-        t = text.lower().strip()
-        logger.debug(f"[LILY] Classifying: {t[:80]}...")
+        if not text or not text.strip():
+            return "chat"
 
-        # ✅ PRIORITY 1: RESEARCH (High specificity)
-        if any(w in t for w in self.RESEARCH_WORDS):
+        t = text.lower().strip()
+        original_text = text.strip()
+    
+        # ───── HELPER FUNCTIONS ─────
+        def contains_any(text: str, words: set) -> bool:
+            return any(word in text for word in words)
+
+        # ───── PRIORITY 1: DEBUG (High precision - moved up) ─────
+        if contains_any(t, self.DEBUG_WORDS):
+            # Avoid false positive when user wants to "build a debug tool" or "fix my app"
+            build_context = contains_any(t, self.BUILD_PHRASES)
+            if not build_context or any(phrase in t for phrase in ["fix bug", "debug code", "fix error", "fix this code"]):
+                logger.info("[LILY] Intent → debug (high confidence)")
+                return "debug"
+
+        # ───── PRIORITY 2: RESEARCH / QUESTIONS ─────
+        is_question = "?" in original_text or any(q in t for q in ["what", "who", "when", "where", "why", "how", "explain", "tell me"])
+    
+        if (contains_any(t, self.RESEARCH_WORDS) or 
+            is_question and len(t.split()) >= 3):
             logger.info("[LILY] Intent → research")
             return "research"
 
-        # ✅ PRIORITY 2: DEBUG/FIX (CHECK BEFORE BUILD!)
-        if any(w in t for w in self.DEBUG_WORDS):
-            logger.info("[LILY] Intent → debug")
-            return "debug"
+        # ───── PRIORITY 3: MATH / CALCULATION ─────
+        math_pattern = re.compile(r'\b(\d+[\s+\-*/^]+\d+|\d+\s*(plus|minus|times|divided by|multiplied by)\s*\d+)\b')
+        if (contains_any(t, {"calculate", "compute", "sum", "total", "how much"}) or 
+            math_pattern.search(t) or 
+            any(c in t for c in "+-*/") and any(char.isdigit() for char in t)):
+            logger.info("[LILY] Intent → math")
+            return "math"
 
-        # ✅ PRIORITY 3: BUILD (Generic build phrases)
-        if any(p in t for p in self.BUILD_PHRASES):
+        # ───── PRIORITY 4: BUILD / CREATE ─────
+        if contains_any(t, self.BUILD_PHRASES):
             logger.info("[LILY] Intent → build")
             return "build"
 
-        # ✅ PRIORITY 4: CONTENT GENERATION
-        content_keywords = {
-            "generate image", "create image", "make image", "image of",
-            "picture of", "generate photo", "draw", "illustrate",
-            "generate video", "create video", "make video", "video about",
-            "clip of", "write a story", "write an article", "write a poem",
-            "write about", "generate text", "create content", "blog post",
-            "essay", "script", "review this", "quality check",
-            "evaluate content", "improve this text", "rate this writing"
-        }
-
-        if any(kw in t for kw in content_keywords):
+        # ───── PRIORITY 5: CONTENT GENERATION ─────
+        content_keywords = {"generate image", "create image", "make image", "draw", 
+                           "generate video", "create video", "story", "poem", "song lyrics"}
+        if contains_any(t, content_keywords) or any(kw in t for kw in ["image of", "picture of", "photo of"]):
             logger.info("[LILY] Intent → content_generation")
             return "content_generation"
 
-        # ✅ PRIORITY 5: QUOTE/CONFIRMATION (For pending quotes)
-        if user_id and user_id in self.system_state["pending_quotes"]:
-            if any(w in t for w in self.CONFIRM_WORDS):
+        # ───── PRIORITY 6: REFINE / CONFIRM (Context aware) ─────
+        if user_id and user_id in self.system_state.get("pending_quotes", {}):
+            if contains_any(t, self.CONFIRM_WORDS):
                 logger.info("[LILY] Intent → confirm")
                 return "confirm"
-            if any(w in t for w in self.REFINE_WORDS):
+            if contains_any(t, self.REFINE_WORDS):
                 logger.info("[LILY] Intent → refine")
                 return "refine"
 
-        # ✅ PRIORITY 6: DEFAULT TO CHAT
-        logger.info("[LILY] Intent → chat (fallback)")
+        # ───── DEFAULT: CHAT ─────
+        logger.info(f"[LILY] Intent → chat (fallback) | Text: {t[:80]}...")
         return "chat"
 
 
@@ -255,117 +264,158 @@ class Lily:
     
     async def run(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """
-        🔥 Main decision-making logic - Plan Based
+    🔥  Main orchestration logic - Improved version
         """
-        user_input = task.get("prompt", "")
+        user_input = task.get("prompt", "").strip()
         user_id = task.get("user_id", "default_user")
         context = task.get("context", {}).copy()
 
-        logger.info(f"[LILY] pending_quotes={list(self.system_state['pending_quotes'].keys())}")
+        if not user_input:
+            return {
+                "action": "chat",
+                "message": "I didn't receive any input. How can I help you?",
+                "prompt": ""
+            }
 
-        # 🔹 Classify intent
-        intent = self.classify_intent(user_input, user_id)
+        # Add to history
         self._add_to_history(user_id, "user", user_input)
 
-        logger.info(f"[LILY] Processing {intent} for {user_id}")
+        # Classify intent
+        intent = self.classify_intent(user_input, user_id)
 
-        # Get billing agent
-        billing = None
-        if self.runtime:
-            billing = self.runtime.get_agent("billing_agent")
+        logger.info(f"[LILY] User: {user_id} | Intent: {intent} | Input: {user_input[:120]}...")
 
-        # ───── RESEARCH ROUTE ─────
+        # Get billing agent once
+        billing = self.runtime.get_agent("billing_agent") if self.runtime else None
+
+        # ───── INTENT ROUTING ─────
+
         if intent == "research":
-            if billing:
-                check = billing.can_perform_action(user_id, "research")
-                if not check["allowed"]:
-                    return {
-                        "action": "plan_limit",
-                        "message": f"❌ Research limit reached. Upgrade to Pro!",
-                        "suggest_upgrade": True
-                    }
-
+            if billing and not billing.can_perform_action(user_id, "research")["allowed"]:
+                return self._plan_limit_response("research")
+        
             return {
                 "action": "research",
                 "prompt": user_input,
                 "context": context,
-                "message": "🔬 Starting research..."
+                "message": "🔬 Researching your query..."
             }
 
-        # ───── DEBUG ROUTE ─────
-        if intent == "debug":
-            if billing:
-                check = billing.can_perform_action(user_id, "debug")
-                if not check["allowed"]:
-                    return {
-                        "action": "plan_limit",
-                        "message": f"❌ Debug limit reached. Upgrade to Pro for more fixes!",
-                        "suggest_upgrade": True
-                    }
-
+        elif intent == "debug":
+            if billing and not billing.can_perform_action(user_id, "debug")["allowed"]:
+                return self._plan_limit_response("debug")
+        
             return {
                 "action": "debug",
                 "prompt": user_input,
                 "context": context,
-                "message": "🛠️ Analyzing and fixing your code..."
+                "message": "🛠️ Analyzing and debugging your code..."
             }
 
-        # ───── CONTENT GENERATION ─────
-        if intent == "content_generation":
-            if billing:
-                check = billing.can_perform_action(user_id, "content_generator")
-                if not check["allowed"]:
-                    return {
-                        "action": "plan_limit",
-                        "message": f"❌ Content generation limit reached.",
-                        "suggest_upgrade": True
-                    }
-
+        elif intent == "math":
+            if billing and not billing.can_perform_action(user_id, "math")["allowed"]:
+                return self._plan_limit_response("math")
+        
             return {
-                "action": "content_generator",
+                "action": "math",
                 "prompt": user_input,
                 "context": context,
-                "message": "🎨 Generating content..."
+                "message": "📐 Computing your calculation..."
             }
 
-        # ───── BUILD ROUTE (Direct - No Quote) ─────
-        if intent == "build":
-            logger.info(f"[LILY] 🏗️ Build request for {user_id}")
-            
+        elif intent == "build":
+            # Determine complexity
+            complexity = self._detect_complexity(user_input)
+        
             if billing:
-                # TODO: Improve complexity detection later
-                complexity = "complex" if any(word in user_input.lower() for word in 
-                    ["full", "complete", "advanced", "dashboard", "ecommerce", "ai", "real-time"]) else "medium"
-                
-                can_build = billing.can_perform_action(user_id, "build", complexity=complexity)
+                check = billing.can_perform_action(user_id, "build", complexity=complexity)
+                if not check["allowed"]:
+                    return self._plan_limit_response("build", complexity)
 
-                if not can_build["allowed"]:
-                    return {
-                        "action": "plan_limit",
-                        "message": f"❌ {can_build['reason'].replace('_', ' ').title()}\n\n💎 Upgrade to **Pro** for more builds and complex projects!",
-                        "suggest_upgrade": True
-                    }
-
-            logger.info(f"[LILY] ✅ Build allowed for {user_id}")
             return {
                 "action": "build",
                 "prompt": user_input,
                 "context": context,
-                "message": "🏗️ Starting build..."
+                "message": f"🏗️ Starting {complexity} build...",
+                "complexity": complexity
             }
 
-        # ───── CHAT (DEFAULT) ─────
-        logger.info(f"[LILY] 💬 Chat mode for {user_id}")
-        return {
-            "action": "chat",
-            "prompt": user_input,
-            "context": context,
-            "message": "💬 Processing your request..."
-        }
+        elif intent == "content_generation":
+            if billing and not billing.can_perform_action(user_id, "content_generator")["allowed"]:
+                return self._plan_limit_response("content_generation")
+        
+            return {
+                "action": "content_generator",
+                "prompt": user_input,
+                "context": context,
+                "message": "🎨 Generating your content..."
+            }
+
+        elif intent == "confirm" and user_id in self.system_state.get("pending_quotes", {}):
+            return {
+                "action": "confirm",
+                "prompt": user_input,
+                "context": context,
+                "message": "✅ Confirmed. Proceeding with previous request..."
+            }
+
+        elif intent == "refine" and user_id in self.system_state.get("pending_quotes", {}):
+            return {
+                "action": "refine",
+                "prompt": user_input,
+                "context": context,
+                "message": "🔄 Refining your previous request..."
+           }
+
+        # ───── DEFAULT: CHAT / GENERAL ─────
+        else:
+            logger.info(f"[LILY] Falling back to general chat for: {user_input[:80]}...")
+        
+            # Optional: You can route simple chat to research or keep it as pure chat
+            return {
+                "action": "research" if self._is_research_like(user_input) else "chat",
+                "prompt": user_input,
+                "context": context,
+                "message": "💬 Got it. How can I assist you today?"
+            }
 
     # ────────────────────────────────────────────────
     # HELPER METHODS
     # ────────────────────────────────────────────────
+
+    def _plan_limit_response(self, action: str, complexity: str = None) -> Dict[str, Any]:
+        """Standardized plan limit response"""
+        messages = {
+            "research": "❌ Research limit reached.",
+            "debug": "❌ Debug limit reached.",
+            "math": "❌ Calculation limit reached.",
+            "build": f"❌ Build limit reached for {complexity or 'this'} project.",
+            "content_generation": "❌ Content generation limit reached."
+        }
+    
+        return {
+            "action": "plan_limit",
+            "message": messages.get(action, "❌ Action limit reached.") + 
+                       "\n\n💎 Upgrade to **Pro** for unlimited access!",
+            "suggest_upgrade": True
+        }
+
+
+    def _detect_complexity(self, text: str) -> str:
+        """Detect project complexity for build requests"""
+        text_lower = text.lower()
+        high_complexity_indicators = {
+            "full", "complete", "advanced", "dashboard", "ecommerce", "ai", 
+            "real-time", "multi-user", "authentication", "database", "backend", 
+            "full stack", "admin panel", "management system"
+        }
+    
+        if any(indicator in text_lower for indicator in high_complexity_indicators):
+            return "complex"
+        elif any(word in text_lower for word in ["simple", "basic", "small", "quick"]):
+            return "simple"
+        else:
+            return "medium"
     
     def get_pending_quote(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get pending quote for user"""
@@ -401,7 +451,21 @@ class Lily:
             "pending_quotes": len(self.system_state["pending_quotes"]),
             "has_runtime": self.runtime is not None
         }
+   
+    def _add_to_history(self, user_id: str, role: str, content: str) -> None:
+        if user_id not in self.system_state["conversation_history"]:
+            self.system_state["conversation_history"][user_id] = deque(maxlen=20)
+        self.system_state["conversation_history"][user_id].append({
+            "role": role, "content": content, "timestamp": time.time()
+        })
 
+    def get_status(self) -> Dict[str, Any]:
+        return {
+            "name": "Lily",
+            "version": "v19",
+            "active_jobs": len(self.system_state["active_jobs"]),
+            "pending_quotes": len(self.system_state.get("pending_quotes", {})),
+        }
 
 # ────────────────────────────────────────────────
 # REGISTRATION

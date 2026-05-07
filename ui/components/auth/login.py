@@ -70,14 +70,14 @@ def show_login_form():
         with col1:
             submit_button = st.form_submit_button(
                 "🔑 Login",
-                use_container_width=True,
+                use_container_width="stretch",
                 type="primary"
             )
         
         with col2:
             forgot_password = st.form_submit_button(
                 "❓ Forgot Password",
-                use_container_width=True
+                use_container_width="stretch",
             )
         
         if submit_button:
@@ -129,7 +129,7 @@ def show_registration_form():
         
         submit_button = st.form_submit_button(
             "📝 Signup",
-            use_container_width=True,
+            use_container_width="stretch",
             type="primary"
         )
         
@@ -299,7 +299,7 @@ def show_forgot_password_dialog(username: str = ""):
                     st.error("❌ Please enter a valid email")
         
         with col2:
-            if st.button("← Back", use_container_width=True):
+            if st.button("← Back", use_container_width="stretch"):
                 st.rerun()
 
 

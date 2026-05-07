@@ -1,33 +1,67 @@
 class ChatAgent:
     """
-    General conversation / explanation agent.
-    Handles prompts that are not tool-specific.
+    Smart General Conversation Agent
+    Handles general questions intelligently with better responses
     """
 
     def __init__(self, runtime):
         self.runtime = runtime
-
+        self.name = "chat"
 
     async def run(self, task):
+        prompt = task.get("prompt", "").strip()
+        user_id = task.get("user_id", "default_user")
 
-        prompt = task.get("prompt", "")
-
-        # Simple intelligent fallback responses
-        # Later you can plug an LLM here
-
-        if "space" in prompt.lower():
+        if not prompt:
             return {
                 "agent": "chat",
-                "message": "Space is the vast region beyond Earth's atmosphere containing planets, stars, galaxies, and cosmic phenomena."
+                "message": "How can I help you today?"
             }
 
-        if "machine learning" in prompt.lower():
+        prompt_lower = prompt.lower()
+
+        # ───── SMART RESPONSES ─────
+        if any(word in prompt_lower for word in ["hello", "hi", "hey", "greetings"]):
             return {
                 "agent": "chat",
-                "message": "Machine learning is a field of artificial intelligence where computers learn patterns from data to make predictions or decisions."
+                "message": "Hello! I'm NOX, your AI workspace assistant. How can I help you today?"
             }
 
+        if "how are you" in prompt_lower:
+            return {
+                "agent": "chat",
+                "message": "I'm doing great, thanks for asking! Ready to build, research, or solve problems with you 🚀"
+            }
+
+        if "who are you" in prompt_lower or "what are you" in prompt_lower:
+            return {
+                "agent": "chat",
+                "message": "I'm NOX — an intelligent AI workspace powered by multiple specialized agents. I can build apps, research topics, debug code, and more."
+            }
+
+        if "time" in prompt_lower:
+            from datetime import datetime
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            return {
+                "agent": "chat",
+                "message": f"The current time is {now}."
+            }
+
+        if "joke" in prompt_lower:
+            return {
+                "agent": "chat",
+                "message": "Why do programmers prefer dark mode? Because light attracts bugs! 😄"
+            }
+
+        # Math (simple fallback)
+        if any(word in prompt_lower for word in ["sum", "add", "calculate", "+"]) and any(char.isdigit() for char in prompt):
+            return {
+                "agent": "chat",
+                "message": "For calculations, try phrasing it like 'calculate 30000 + 2000' — Lily should route it properly now."
+            }
+
+        # Default smart response
         return {
             "agent": "chat",
-            "message": "That's an interesting question. I'm still learning, but I can help explain many topics."
+            "message": f"I understand you're asking about: **{prompt}**\n\nI'll research this properly for you."
         }

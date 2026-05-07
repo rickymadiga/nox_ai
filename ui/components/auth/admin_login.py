@@ -40,7 +40,7 @@ def show_admin_login():
             handle_admin_login(username)
 
         if back_btn:
-            st.session_state.show_admin_login = False
+            st.session_state.show_admin_login = "content"
             st.rerun()
 
 

@@ -116,73 +116,135 @@ def api_get(endpoint):
 # AUTH SECTION
 # ═════════════════════════════════════════════
 def show_auth_sidebar():
-    """Show authentication in sidebar"""
-    st.sidebar.title("🔐 Authentication")
+    """Enhanced Pre-Login Experience"""
+    st.sidebar.title("🔐 NOX Workspace")
 
     if not st.session_state.token:
-        auth_tab = st.sidebar
-        
-        username = auth_tab.text_input(
-            "Username",
-            placeholder="Enter your username",
-            key="login_username"
-        )
-        password = auth_tab.text_input(
-            "Password",
-            type="password",
-            placeholder="Enter your password",
-            key="login_password"
-        )
-        
-        col1, col2 = auth_tab.columns(2)
-        
+        st.sidebar.markdown("### Welcome to NOX")
+        st.sidebar.markdown("The AI Agentic Workspace")
+
+        # Hero-like info in sidebar
+        st.sidebar.markdown("""
+        ---
+        **🚀 What you can do:**
+        - Build full apps with one prompt
+        - Debug & fix code instantly  
+        - Research any topic with sources
+        - Generate images & videos
+        - Smart AI assistant
+        """)
+
+        st.sidebar.markdown("---")
+
+        # Login Form
+        username = st.sidebar.text_input("Username", placeholder="Enter username", key="login_username")
+        password = st.sidebar.text_input("Password", type="password", placeholder="Enter password", key="login_password")
+
+        col1, col2 = st.sidebar.columns(2)
         with col1:
-            if st.button("🔓 Login", use_container_width=True):
+            if st.button("🔓 Login", use_container_width="stretch"):
                 if not username or not password:
-                    st.sidebar.error("⚠️ Please enter credentials")
+                    st.sidebar.error("Please enter credentials")
                 else:
-                    with st.spinner("🔄 Logging in..."):
-                        res = api_post("/auth/login", {
-                            "username": username,
-                            "password": password
-                        })
+                    with st.spinner("Logging in..."):
+                        res = api_post("/auth/login", {"username": username, "password": password})
+                    
                     if res and res.get("success"):
                         st.session_state.token = res["data"]["token"]
                         st.session_state.user = res["data"]["user"].get("username", username)
-                        st.sidebar.success("✅ Logged in successfully!")
+                        st.sidebar.success("✅ Login successful!")
                         time.sleep(0.8)
                         st.rerun()
-                    elif res:
-                        st.sidebar.error(f"❌ {res.get('error', 'Login failed')}")
-        
+                    else:
+                        st.sidebar.error("❌ Invalid credentials")
+
         with col2:
-            if st.button("📝 Sign Up", use_container_width=True):
+            if st.button("📝 Sign Up", use_container_width="stretch"):
                 st.session_state.page = "signup"
                 st.rerun()
-    else:
-        # Show logged-in user
+
+        # Feature highlights
         st.sidebar.markdown("---")
+        st.sidebar.caption("✨ Powered by advanced AI agents")
+
+    else:
+        # Logged in user
         st.sidebar.success(f"👤 **{st.session_state.user}**")
-        
-        if st.sidebar.button("🔓 Logout", use_container_width=True):
+        if st.sidebar.button("🔓 Logout", use_container_width="stretch"):
             st.session_state.token = None
             st.session_state.user = None
             st.session_state.messages = []
-            st.session_state.page = "chat"
-            st.sidebar.info("✅ Logged out")
-            time.sleep(0.5)
             st.rerun()
-        
-        st.sidebar.markdown("---")
 
 
 # ═════════════════════════════════════════════
 # PAGE COMPONENTS
 # ═════════════════════════════════════════════
 
+def show_landing_page():
+    """Beautiful pre-login landing page"""
+    st.title("⚡ Welcome to NOX")
+    st.markdown("### The Intelligent AI Workspace")
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.markdown("""
+        **Build faster. Think deeper.**
+
+        NOX combines powerful AI agents to help you:
+        - Create full applications from a single prompt
+        - Research any topic with real sources
+        - Debug and fix code automatically
+        - Generate content, images & videos
+        """)
+
+        if st.button("🚀 Get Started - Login Now", type="primary", use_container_width="stretch"):
+            st.info("👈 Use the login form in the sidebar")
+
+    with col2:
+        # Fixed: use 'use_container_width' instead of deprecated 'use_column_width'
+        st.image(
+            "https://picsum.photos/600/400", 
+            caption="AI Workspace",
+            use_container_width="stretch"
+        )
+
+    # Feature cards
+    st.markdown("### ✨ Core Features")
+    cols = st.columns(3)
+
+    with cols[0]:
+        st.metric("🏗️", "App Builder", "Turn ideas into working apps")
+    with cols[1]:
+        st.metric("🔬", "Deep Research", "With real web sources")
+    with cols[2]:
+        st.metric("🛠️", "Code Assistant", "Debug + Fix instantly")
+
+    st.divider()
+    st.caption("Login to start building with AI agents")
+
 def show_chat_page():
     """Chat page"""
     st.title("⚡ NOX Workspace - Chat")
+
+    # Mobile Optimization
+    if st.session_state.get("page") == "chat":
+        st.markdown("""
+            <style>
+                .stMarkdown, .stExpander, .element-container {
+                    max-width: 100% !important;
+                }
+                .stButton button {
+                    width: 100%;
+                }
+                @media (max-width: 768px) {
+                    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
+                        font-size: 1.4rem !important;
+                    }
+                }
+            </style>
+        """, unsafe_allow_html=True)
 
     left, right = st.columns([3, 1], gap="medium")
 
@@ -211,7 +273,7 @@ def show_chat_page():
             else:
                 st.info("💤 Waiting for activity...")
         
-        if st.button("🔄 Refresh Logs", use_container_width=True):
+        if st.button("🔄 Refresh Logs", use_container_width="stretch"):
             st.rerun()
 
     # LEFT PANEL → CHAT
@@ -297,7 +359,7 @@ def show_chat_page():
                             data=video_bytes,
                             file_name=f"video_{job_id}.mp4",
                             mime="video/mp4",
-                            use_container_width=True
+                            use_container_width="stretch",
                         )
                     except Exception as download_error:
                         st.error(f"Download failed: {download_error}")
@@ -311,7 +373,7 @@ def show_chat_page():
             elif action == "content_generator" and response_type == "image":
                 data = res.get("data", {})
                 if data.get("url"):
-                    st.image(data["url"], caption="Generated Image", use_column_width=True)
+                    st.image(data["url"], caption="Generated Image", use_column_width="content")
 
             # ==================== DEBUG / CODE ====================
             elif action in ["debug", "code_result"]:
@@ -327,42 +389,63 @@ def show_chat_page():
                         for filename, code in updated_files.items():
                             st.code(code, language="python", line_numbers=True)
 
-            # ==================== RESEARCH ====================
+            # ==================== RESEARCH - MOBILE OPTIMIZED ====================
             elif action == "research" or response_type == "research_result":
                 st.markdown("### 🔬 Research Results")
                 
-                query = res.get("research_query") or res.get("prompt") or "your query"
-                st.info(f"**Query:** {query}")
+                query = res.get("research_query") or res.get("prompt", "Your search")
+                st.markdown(f"**Query:** `{query}`")
                 
-                # Main content
-                main_content = (
-                    res.get("summary") or 
-                    res.get("report") or 
-                    res.get("response") or 
-                    "No detailed information available."
-                )
-                st.markdown(main_content)
+                # Main Response / Answer
+                main_text = res.get("response", "")
+                if main_text and len(main_text) > 10:
+                    st.markdown(main_text)
                 
-                # Sources
-                sources = res.get("sources") or res.get("data", {}).get("sources", [])
+                # Summary
+                summary = res.get("summary") or res.get("data", {}).get("summary", "")
+                if summary:
+                    st.markdown(summary)
+                
+                # Key Findings
+                key_findings = res.get("key_findings", []) or res.get("data", {}).get("key_findings", [])
+                if key_findings:
+                    st.markdown("#### 🔑 Key Findings")
+                    for finding in key_findings[:5]:
+                        st.markdown(f"• {finding}")
+                
+                # Sources - Mobile Friendly
+                sources = res.get("sources", []) or res.get("data", {}).get("sources", [])
                 if sources:
-                    st.markdown("#### 📚 Sources")
-                    for i, src in enumerate(sources[:8], 1):
-                        if isinstance(src, dict):
-                            title = src.get("title", "Source")
-                            url = src.get("url")
-                            if url:
-                                st.markdown(f"**{i}.** [{title}]({url})")
-                            else:
-                                st.write(f"**{i}.** {title}")
-                        else:
-                            st.write(f"**{i}.** {src}")
-                else:
-                    st.caption("No sources returned by research agent.")
+                    with st.expander(f"📚 Sources ({len(sources)})", expanded=False):
+                        for i, source in enumerate(sources[:8], 1):
+                            title = source.get("title", "Source")
+                            content = (source.get("content") or "")[:220]
+                            url = source.get("url", "")
+                            
+                            st.markdown(f"**{i}. {title}**")
+                            if content:
+                                st.caption(content + "...")
+                            
+                            if url and url.startswith("http"):
+                                st.markdown(f"[🔗 Open Source]({url})")
+                            st.divider()
                 
-                # Full raw data
-                with st.expander("🔍 Raw Research Data", expanded=False):
-                    st.json(res.get("data", res))
+                # Conclusions & Recommendations - Better on mobile
+                conclusions = res.get("conclusions", []) or res.get("data", {}).get("conclusions", [])
+                if conclusions:
+                    st.markdown("#### 🎯 Conclusions")
+                    for c in conclusions:
+                        st.success(f"• {c}")
+                
+                recommendations = res.get("recommendations", []) or res.get("data", {}).get("recommendations", [])
+                if recommendations:
+                    st.markdown("#### 💡 Recommendations")
+                    for r in recommendations:
+                        st.info(f"• {r}")
+                
+                # Raw Data (collapsed by default)
+                with st.expander("🔍 Debug - Full Data", expanded=False):
+                    st.json({k: v for k, v in res.items() if k != "logs"})
 
             # ==================== BUILD ====================
             if action == "build" or response_type == "build_result" or res.get("zip"):
@@ -385,7 +468,7 @@ def show_chat_page():
                             data=zip_bytes,
                             file_name=zip_data.get("filename", "nox_app.zip"),
                             mime="application/zip",
-                            use_container_width=True,
+                            width="stretch",
                             key=f"download_{int(time.time())}"  # prevent duplicate key
                         )
                         st.success("✅ ZIP Ready!")
@@ -452,7 +535,7 @@ def show_signup_page():
     
     with col1:
         st.markdown("### Already have an account?")
-        if st.button("← Back to Login", use_container_width=True):
+        if st.button("← Back to Login", width="stretch"):
             st.session_state.page = "chat"
             st.rerun()
     
@@ -484,7 +567,7 @@ def show_signup_page():
             
             terms = st.checkbox("I agree to the terms of service")
             
-            submit = st.form_submit_button("🚀 Create Account", use_container_width=True)
+            submit = st.form_submit_button("🚀 Create Account", width="stretch")
         
         if submit:
             if not all([username, email, password, password_confirm]):
@@ -566,7 +649,7 @@ def show_editor_page():
             
             col1, col2 = st.columns(2)
             with col1:
-                if st.button(f"📋 Copy {filename}", use_container_width=True):
+                if st.button(f"📋 Copy {filename}", width="stretch"):
                     st.success(f"✅ Copied {filename}")
             with col2:
                 st.download_button(
@@ -574,7 +657,7 @@ def show_editor_page():
                     data=edited,
                     file_name=filename,
                     mime="text/plain",
-                    use_container_width=True,
+                    width="stretch",
                     key=f"dl_{filename}"
                 )
     
@@ -582,12 +665,12 @@ def show_editor_page():
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("💾 Save All Changes", use_container_width=True):
+        if st.button("💾 Save All Changes", width="stretch"):
             st.session_state.edited_files = edited_code
             st.success("✅ Changes saved locally")
     
     with col2:
-        if st.button("🔄 Reset All", use_container_width=True):
+        if st.button("🔄 Reset All", width="stretch"):
             st.rerun()
 
 
@@ -633,7 +716,7 @@ def show_downloads_page():
                         data=zip_bytes,
                         file_name=zip_data.get("filename", "nox_app.zip"),
                         mime="application/zip",
-                        use_container_width=True,
+                        width="stretch",
                         key="download_latest"
                     )
                     st.success("✅ Ready for download")
@@ -650,20 +733,13 @@ def show_downloads_page():
     with tab3:
         st.markdown("### ⚙️ Settings")
         st.info("⚙️ Settings coming soon")
-
-
 # ═════════════════════════════════════════════
 # MAIN APP
 # ═════════════════════════════════════════════
 
 show_auth_sidebar()
 
-# Auth guard
-if not st.session_state.token and st.session_state.page != "signup":
-    st.warning("🔐 Please login to continue")
-    st.stop()
-
-# Page routing
+# Define pages dictionary
 pages = {
     "chat": show_chat_page,
     "editor": show_editor_page,
@@ -671,45 +747,54 @@ pages = {
     "signup": show_signup_page,
 }
 
-# Navigation
+# ─────────────────────────────────────────────
+# ROUTING
+# ─────────────────────────────────────────────
+if not st.session_state.token:
+    show_landing_page()
+elif st.session_state.page == "signup":
+    show_signup_page()
+else:
+    current_page = st.session_state.get("page", "chat")
+    if current_page in pages:
+        pages[current_page]()
+    else:
+        show_chat_page()
+
+
+# ─────────────────────────────────────────────
+# CLEAN SIDEBAR NAVIGATION (Logged-in only)
+# ─────────────────────────────────────────────
 if st.session_state.token:
     st.sidebar.markdown("---")
-    st.sidebar.subheader("📱 Pages")
+    st.sidebar.subheader("📱 Navigation")
     
-    cols = st.sidebar.columns(3)
-    with cols[0]:
-        if st.button("💬 Chat", use_container_width=True, key="nav_chat"):
+    col1, col2, col3 = st.sidebar.columns(3)
+    with col1:
+        if st.button("💬 Chat", width="stretch", key="nav_chat"):
             st.session_state.page = "chat"
             st.rerun()
-    with cols[1]:
-        if st.button("✏️ Editor", use_container_width=True, key="nav_editor"):
+    with col2:
+        if st.button("✏️ Editor", width="stretch", key="nav_editor"):
             st.session_state.page = "editor"
             st.rerun()
-    with cols[2]:
-        if st.button("📥 Downloads", use_container_width=True, key="nav_downloads"):
+    with col3:
+        if st.button("📥 Downloads", width="stretch", key="nav_downloads"):
             st.session_state.page = "downloads"
             st.rerun()
-    
+
     st.sidebar.markdown("---")
-    
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        if st.button("🗑️ Clear History", use_container_width=True):
+    col_a, col_b = st.sidebar.columns(2)
+    with col_a:
+        if st.button("🗑️ Clear History", width="stretch"):
             st.session_state.messages = []
-            st.info("✅ Cleared")
+            st.success("✅ Cleared")
             st.rerun()
-    with col2:
-        if st.button("🔄 Refresh", use_container_width=True):
+    with col_b:
+        if st.button("🔄 Refresh", width="stretch"):
             st.rerun()
-    
+
     st.sidebar.markdown("---")
     st.sidebar.subheader("📊 Stats")
     st.sidebar.metric("Messages", len(st.session_state.messages))
     st.sidebar.metric("Logs", len(st.session_state.live_logs))
-
-# Show current page
-page = st.session_state.get("page", "chat")
-if page in pages:
-    pages[page]()
-else:
-    show_chat_page()

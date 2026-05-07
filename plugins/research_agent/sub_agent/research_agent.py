@@ -1,3 +1,4 @@
+# research_agent.py - FIXED VERSION
 import logging
 from typing import Dict, List, Any
 import json
@@ -5,10 +6,7 @@ import json
 logger = logging.getLogger(__name__)
 
 class ResearchAgent:
-    """
-    🔬 Research AI Agent
-    Performs multi-step research: decompose → search → analyze → validate → synthesize
-    """
+    """🔬 Research AI Agent"""
 
     def __init__(self, runtime):
         self.runtime = runtime
@@ -34,21 +32,40 @@ class ResearchAgent:
         try:
             # Step 1: Decompose
             logger.info(f"[{self.name}] Step 1: Decomposing...")
-            decomposition = await self.runtime.execute_agent("decomposer", {
-                "query": research_query,
-                "research_type": research_type
-            })
-            sub_questions = decomposition.get("sub_questions", [research_query])
-            logger.info(f"[{self.name}] ✅ Sub-questions: {len(sub_questions)}")
+            try:
+                decomposition = await self.runtime.execute_agent("decomposer", {
+                    "query": research_query,
+                    "research_type": research_type
+                })
+                sub_questions = decomposition.get("sub_questions", [research_query])
+                logger.info(f"[{self.name}] ✅ Sub-questions: {sub_questions}")
+            except Exception as e:
+                logger.error(f"[{self.name}] ❌ Decomposer failed: {e}")
+                sub_questions = [research_query]
             
             # Step 2: Search
             logger.info(f"[{self.name}] Step 2: Searching...")
-            search_results = await self.runtime.execute_agent("searcher", {
-                "queries": sub_questions,
-                "user_id": user_id
-            })
-            sources = search_results.get("sources", [])
-            logger.info(f"[{self.name}] ✅ Found {len(sources)} sources")
+            try:
+                search_results = await self.runtime.execute_agent("searcher", {
+                    "queries": sub_questions,
+                    "user_id": user_id
+                })
+                sources = search_results.get("sources", [])
+                logger.info(f"[{self.name}] ✅ Found {len(sources)} sources: {sources}")
+            except Exception as e:
+                logger.error(f"[{self.name}] ❌ Searcher failed: {e}")
+                sources = []
+            
+            if not sources:
+                logger.warning(f"[{self.name}] ⚠️ No sources found")
+                return {
+                    "agent": "research_agent",
+                    "status": "no_results",
+                    "action": "research",
+                    "research_query": research_query,
+                    "response": f"No sources found for '{research_query}'",
+                    "sources": []
+                }
             
             # Step 3: Analyze
             logger.info(f"[{self.name}] Step 3: Analyzing...")
@@ -56,7 +73,7 @@ class ResearchAgent:
                 "sources": sources,
                 "research_query": research_query
             })
-            logger.info(f"[{self.name}] ✅ Analysis complete")
+            logger.info(f"[{self.name}] ✅ Analysis: {analysis}")
             
             # Step 4: Validate
             logger.info(f"[{self.name}] Step 4: Validating...")
@@ -65,7 +82,7 @@ class ResearchAgent:
                 "sources": sources,
                 "research_query": research_query
             })
-            logger.info(f"[{self.name}] ✅ Validation complete")
+            logger.info(f"[{self.name}] ✅ Validation: {validation}")
             
             # Step 5: Synthesize
             logger.info(f"[{self.name}] Step 5: Synthesizing...")
@@ -75,7 +92,7 @@ class ResearchAgent:
                 "sources": sources,
                 "research_query": research_query
             })
-            logger.info(f"[{self.name}] ✅ Synthesis complete")
+            logger.info(f"[{self.name}] ✅ Synthesis: {synthesis}")
             
             # Step 6: Report
             logger.info(f"[{self.name}] Step 6: Generating report...")
@@ -97,9 +114,9 @@ class ResearchAgent:
                 "type": "research_result",
                 "research_query": research_query,
                 "summary": synthesis.get("summary"),
-                "key_findings": synthesis.get("key_findings"),
-                "conclusions": synthesis.get("conclusions"),
-                "recommendations": synthesis.get("recommendations"),
+                "key_findings": synthesis.get("key_findings", []),
+                "conclusions": synthesis.get("conclusions", []),
+                "recommendations": synthesis.get("recommendations", []),
                 "research_type": research_type,
                 "sub_questions": sub_questions,
                 "sources_found": len(sources),
@@ -108,12 +125,11 @@ class ResearchAgent:
                 "validation": validation,
                 "synthesis": synthesis,
                 "report": report,
-                "response": self._format_response(research_query, sources, synthesis),
-                "summary": synthesis.get("summary", f"Research on '{research_query}' completed")
+                "response": self._format_response(research_query, sources, synthesis)
             }
             
         except Exception as e:
-            logger.error(f"[{self.name}] Error: {e}", exc_info=True)
+            logger.error(f"[{self.name}] ❌ Error: {e}", exc_info=True)
             return {
                 "agent": "research_agent",
                 "status": "error",
@@ -124,7 +140,7 @@ class ResearchAgent:
             }
     
     def _format_response(self, query: str, sources: List[Dict], synthesis: Dict) -> str:
-        """Format response for frontend - Fixed signature"""
+        """Format response for frontend"""
         if not sources:
             return f"Could not find sufficient information for '{query}' at this time."
 
@@ -132,7 +148,7 @@ class ResearchAgent:
 
         # Direct Answer
         for source in sources:
-            if source.get("type") == "answer" or "capital" in source.get("title", "").lower() or "moscow" in source.get("content", "").lower():
+            if source.get("type") == "answer":
                 parts.append(f"**✅ Answer:** {source.get('content')}\n")
                 break
 

@@ -418,10 +418,10 @@ class Runtime:
             logger.error(f"[CAPABILITY ERROR] {agent_name}: {e}", exc_info=True)
 
     # ───── EXECUTION ─────
-    async def execute_agent(self, name: str, task: Dict[str, Any]) -> Dict[str, Any]:
-        agent = self.get_agent(name)
+    async def execute_agent(self, agent_name: str, task: Dict[str, Any]) -> Dict[str, Any]:
+        agent = self.get_agent(agent_name)
         if not agent:
-            return {"error": f"Agent '{name}' not found"}
+            return {"error": f"Agent '{agent_name}' not found"}
 
         try:
             result = agent.run(task)
@@ -429,7 +429,7 @@ class Runtime:
                 result = await result
             return result or {}
         except Exception as e:
-            logger.error(f"[AGENT EXECUTION ERROR] {name}: {e}", exc_info=True)
+            logger.error(f"[AGENT EXECUTION ERROR] {agent_name}: {e}", exc_info=True)
             return {"error": str(e)}
 
 
