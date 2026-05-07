@@ -142,7 +142,7 @@ def show_auth_sidebar():
 
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            if st.button("🔓 Login", use_container_width="stretch"):
+            if st.button("🔓 Login", width="stretch"):
                 if not username or not password:
                     st.sidebar.error("Please enter credentials")
                 else:
@@ -159,7 +159,7 @@ def show_auth_sidebar():
                         st.sidebar.error("❌ Invalid credentials")
 
         with col2:
-            if st.button("📝 Sign Up", use_container_width="stretch"):
+            if st.button("📝 Sign Up", width="stretch"):
                 st.session_state.page = "signup"
                 st.rerun()
 
@@ -170,7 +170,7 @@ def show_auth_sidebar():
     else:
         # Logged in user
         st.sidebar.success(f"👤 **{st.session_state.user}**")
-        if st.sidebar.button("🔓 Logout", use_container_width="stretch"):
+        if st.sidebar.button("🔓 Logout", width="stretch"):
             st.session_state.token = None
             st.session_state.user = None
             st.session_state.messages = []
@@ -199,7 +199,7 @@ def show_landing_page():
         - Generate content, images & videos
         """)
 
-        if st.button("🚀 Get Started - Login Now", type="primary", use_container_width="stretch"):
+        if st.button("🚀 Get Started - Login Now", type="primary", width="stretch"):
             st.info("👈 Use the login form in the sidebar")
 
     with col2:
@@ -207,7 +207,7 @@ def show_landing_page():
         st.image(
             "https://picsum.photos/600/400", 
             caption="AI Workspace",
-            use_container_width="stretch"
+            width="stretch"
         )
 
     # Feature cards
@@ -273,7 +273,7 @@ def show_chat_page():
             else:
                 st.info("💤 Waiting for activity...")
         
-        if st.button("🔄 Refresh Logs", use_container_width="stretch"):
+        if st.button("🔄 Refresh Logs", width="stretch"):
             st.rerun()
 
     # LEFT PANEL → CHAT
@@ -528,83 +528,72 @@ def show_chat_page():
 
 
 def show_signup_page():
-    """Sign up page"""
+    """Fixed & Improved Sign Up Page"""
     st.title("📝 Create Account")
     
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        st.markdown("### Already have an account?")
-        if st.button("← Back to Login", width="stretch"):
+    # Back button
+    if st.button("← Back to Login", width="stretch"):
+        st.session_state.page = "chat"
+        st.rerun()
+
+    st.markdown("### Sign up to NOX")
+
+    with st.form("signup_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            username = st.text_input("Username", placeholder="Choose a username")
+            email = st.text_input("Email", placeholder="your@email.com")
+        
+        with col2:
+            password = st.text_input("Password", type="password", placeholder="Strong password")
+            password_confirm = st.text_input("Confirm Password", type="password", placeholder="Repeat password")
+        
+        terms = st.checkbox("I agree to the terms of service", value=False)
+        
+        submit = st.form_submit_button("🚀 Create Account", width="stretch", type="primary")
+
+    # ← This must be OUTSIDE the form but at the same indentation level
+    if submit:
+        # Validation
+        if not username or not email or not password or not password_confirm:
+            st.error("⚠️ All fields are required!")
+            st.stop()
+        
+        if len(username) < 3:
+            st.error("⚠️ Username must be at least 3 characters long")
+            st.stop()
+        
+        if len(password) < 6:
+            st.error("⚠️ Password must be at least 6 characters")
+            st.stop()
+        
+        if password != password_confirm:
+            st.error("⚠️ Passwords do not match!")
+            st.stop()
+        
+        if not terms:
+            st.error("⚠️ You must agree to the terms of service")
+            st.stop()
+
+        # Call API
+        with st.spinner("Creating your account..."):
+            res = api_post("/auth/signup", {
+                "username": username.strip(),
+                "email": email.strip(),
+                "password": password
+            })
+        
+        if res and res.get("success"):
+            st.success("✅ Account created successfully! You can now login.")
+            time.sleep(1.5)
             st.session_state.page = "chat"
             st.rerun()
-    
-    with col2:
-        st.markdown("### Sign up to NOX")
-        
-        with st.form("signup_form"):
-            username = st.text_input(
-                "Username",
-                placeholder="Choose a username",
-            )
-            
-            email = st.text_input(
-                "Email",
-                placeholder="your@email.com",
-            )
-            
-            password = st.text_input(
-                "Password",
-                type="password",
-                placeholder="Strong password",
-            )
-            
-            password_confirm = st.text_input(
-                "Confirm Password",
-                type="password",
-                placeholder="Repeat password",
-            )
-            
-            terms = st.checkbox("I agree to the terms of service")
-            
-            submit = st.form_submit_button("🚀 Create Account", width="stretch")
-        
-        if submit:
-            if not all([username, email, password, password_confirm]):
-                st.error("⚠️ Please fill all fields")
-                return
-            
-            if len(username) < 3:
-                st.error("⚠️ Username must be at least 3 characters")
-                return
-            
-            if len(password) < 8:
-                st.error("⚠️ Password must be at least 8 characters")
-                return
-            
-            if password != password_confirm:
-                st.error("⚠️ Passwords do not match")
-                return
-            
-            if not terms:
-                st.error("⚠️ Please accept terms of service")
-                return
-            
-            with st.spinner("🔄 Creating account..."):
-                res = api_post("/auth/signup", {
-                    "username": username,
-                    "email": email,
-                    "password": password
-                })
-            
-            if res and res.get("success"):
-                st.success("✅ Account created! Redirecting to login...")
-                time.sleep(1)
-                st.session_state.page = "chat"
-                st.rerun()
-            else:
-                error = res.get("error") if res else "Unknown error"
-                st.error(f"❌ {error}")
+        else:
+            error_msg = ""
+            if res:
+                error_msg = res.get("detail") or res.get("error") or str(res)
+            st.error(f"❌ Failed to create account: {error_msg}")
 
 
 def show_editor_page():
@@ -733,8 +722,9 @@ def show_downloads_page():
     with tab3:
         st.markdown("### ⚙️ Settings")
         st.info("⚙️ Settings coming soon")
+        
 # ═════════════════════════════════════════════
-# MAIN APP
+# MAIN APP ROUTING (FIXED)
 # ═════════════════════════════════════════════
 
 show_auth_sidebar()
@@ -748,12 +738,12 @@ pages = {
 }
 
 # ─────────────────────────────────────────────
-# ROUTING
+# FIXED ROUTING LOGIC
 # ─────────────────────────────────────────────
-if not st.session_state.token:
-    show_landing_page()
-elif st.session_state.page == "signup":
+if st.session_state.page == "signup":
     show_signup_page()
+elif not st.session_state.token:
+    show_landing_page()
 else:
     current_page = st.session_state.get("page", "chat")
     if current_page in pages:

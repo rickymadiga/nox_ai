@@ -370,8 +370,8 @@ class Lily:
         # ───── DEFAULT: CHAT / GENERAL ─────
         else:
             logger.info(f"[LILY] Falling back to general chat for: {user_input[:80]}...")
-        
-            # Optional: You can route simple chat to research or keep it as pure chat
+            
+            # Smart fallback: route question-like inputs to research
             return {
                 "action": "research" if self._is_research_like(user_input) else "chat",
                 "prompt": user_input,
@@ -416,6 +416,24 @@ class Lily:
             return "simple"
         else:
             return "medium"
+        
+    def _is_research_like(self, text: str) -> bool:
+        """
+        Determine if a chat message should be routed to research
+        """
+        if not text:
+            return False
+        
+        t = text.lower().strip()
+        
+        # Simple heuristics for general questions
+        research_indicators = [
+            "what", "who", "when", "where", "why", "how", 
+            "explain", "tell me about", "difference between",
+            "latest", "current", "news", "update on"
+        ]
+        
+        return any(indicator in t for indicator in research_indicators) or "?" in text    
     
     def get_pending_quote(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get pending quote for user"""
