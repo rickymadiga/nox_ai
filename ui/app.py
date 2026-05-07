@@ -50,28 +50,44 @@ def get_headers():
 
 
 def api_post(endpoint, data):
-    """Make POST request to API"""
+    """Make POST request to API with better token handling"""
     try:
+        headers = get_headers()
+        
         response = requests.post(
             f"{API_BASE}{endpoint}",
             json=data,
-            headers=get_headers(),
-            timeout=30
+            headers=headers,
+            timeout=45
         )
+        
+        # Handle token expiration
+        if response.status_code == 401:
+            st.error("🔐 Session expired. Please login again.")
+            st.session_state.token = None
+            st.session_state.user = None
+            time.sleep(1)
+            st.rerun()
+            return None
+        
         response.raise_for_status()
         return response.json()
+        
     except requests.exceptions.ConnectionError:
         st.error("❌ Cannot connect to server. Is it running?")
         return None
-    except requests.exceptions.Timeout:
-        st.error("❌ Request timeout. Server took too long to respond.")
-        return None
     except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 401:
+            st.error("🔐 Invalid or expired token. Please login again.")
+            st.session_state.token = None
+            st.session_state.user = None
+            st.rerun()
+            return None
         try:
-            error_msg = e.response.json().get("detail", str(e))
+            error_detail = e.response.json().get("detail", str(e))
         except:
-            error_msg = str(e)
-        st.error(f"❌ Server error: {error_msg}")
+            error_detail = str(e)
+        st.error(f"❌ Server error: {error_detail}")
         return None
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
@@ -130,12 +146,11 @@ def show_auth_sidebar():
                             "username": username,
                             "password": password
                         })
-                    
                     if res and res.get("success"):
                         st.session_state.token = res["data"]["token"]
                         st.session_state.user = res["data"]["user"].get("username", username)
-                        st.sidebar.success("✅ Logged in!")
-                        time.sleep(0.5)
+                        st.sidebar.success("✅ Logged in successfully!")
+                        time.sleep(0.8)
                         st.rerun()
                     elif res:
                         st.sidebar.error(f"❌ {res.get('error', 'Login failed')}")
@@ -205,6 +220,15 @@ def show_chat_page():
         
         def render_response(res):
             """Render API response - Enhanced with Video support"""
+
+            action = (res.get("action") or res.get("type") or "chat").lower().strip()
+            response_type = res.get("type", "message")
+            
+            # Force build_result type if zip is present
+            if res.get("zip") and not action.startswith("build"):
+                action = "build"
+                response_type = "build_result"
+
             if not res:
                 st.error("❌ Invalid response")
                 return
@@ -303,17 +327,56 @@ def show_chat_page():
                         for filename, code in updated_files.items():
                             st.code(code, language="python", line_numbers=True)
 
+            # ==================== RESEARCH ====================
+            elif action == "research" or response_type == "research_result":
+                st.markdown("### 🔬 Research Results")
+                
+                query = res.get("research_query") or res.get("prompt") or "your query"
+                st.info(f"**Query:** {query}")
+                
+                # Main content
+                main_content = (
+                    res.get("summary") or 
+                    res.get("report") or 
+                    res.get("response") or 
+                    "No detailed information available."
+                )
+                st.markdown(main_content)
+                
+                # Sources
+                sources = res.get("sources") or res.get("data", {}).get("sources", [])
+                if sources:
+                    st.markdown("#### 📚 Sources")
+                    for i, src in enumerate(sources[:8], 1):
+                        if isinstance(src, dict):
+                            title = src.get("title", "Source")
+                            url = src.get("url")
+                            if url:
+                                st.markdown(f"**{i}.** [{title}]({url})")
+                            else:
+                                st.write(f"**{i}.** {title}")
+                        else:
+                            st.write(f"**{i}.** {src}")
+                else:
+                    st.caption("No sources returned by research agent.")
+                
+                # Full raw data
+                with st.expander("🔍 Raw Research Data", expanded=False):
+                    st.json(res.get("data", res))
+
             # ==================== BUILD ====================
-            if action == "build" or res.get("zip"):
+            if action == "build" or response_type == "build_result" or res.get("zip"):
                 zip_data = res.get("zip")
-                if zip_data:
-                    st.markdown("#### 📦 Build Output")
+                if zip_data and isinstance(zip_data, dict) and zip_data.get("data"):
+                    st.markdown("#### 📦 Build Output - Ready to Download")
+                    
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.metric("Filename", zip_data.get("filename", "nox_app.zip"))
+                        st.metric("📁 Filename", zip_data.get("filename", "nox_app.zip"))
                     with col2:
                         size_kb = zip_data.get("size", 0) / 1024
-                        st.metric("Size", f"{size_kb:.2f} KB")
+                        st.metric("💾 Size", f"{size_kb:.2f} KB")
+                    
                     try:
                         import base64
                         zip_bytes = base64.b64decode(zip_data.get("data", ""))
@@ -322,10 +385,16 @@ def show_chat_page():
                             data=zip_bytes,
                             file_name=zip_data.get("filename", "nox_app.zip"),
                             mime="application/zip",
-                            use_container_width=True
+                            use_container_width=True,
+                            key=f"download_{int(time.time())}"  # prevent duplicate key
                         )
+                        st.success("✅ ZIP Ready!")
                     except Exception as e:
-                        st.error(f"❌ Download error: {str(e)}")
+                        st.error(f"❌ Download preparation failed: {str(e)}")
+                        if zip_data.get("download_url"):
+                            st.markdown(f"[🔗 Direct Download]({zip_data['download_url']})")
+                else:
+                    st.warning("⚠️ Build completed but ZIP data is missing")
 
             # ==================== LOGS ====================
             logs = res.get("logs", [])

@@ -1,12 +1,11 @@
-# nox/agents/preprocessor_agent.py
-
 import re
 from typing import Dict, Any
+
 
 class PreprocessorAgent:
     def run(self, task: Dict[str, Any]) -> Dict[str, Any]:
         prompt = task.get("prompt", "")
-        
+
         cleaned = self._clean_prompt(prompt)
         code = self._extract_code(prompt)
 
@@ -19,22 +18,45 @@ class PreprocessorAgent:
         }
 
     def _clean_prompt(self, text: str) -> str:
-        noise = ["fix this code", "please", "help me", "can you"]
-        t = text.lower()
-        for n in noise:
-            t = t.replace(n, "")
-        return t.strip()
+        if not text:
+            return ""
+
+        # normalize whitespace only
+        text = text.replace("\r\n", "\n")
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+
+        return text.strip()
 
     def _extract_code(self, text: str) -> str:
-        # crude but effective v1
-        if "for " in text or "def " in text or "if " in text:
+        if not text:
+            return ""
+
+        code_markers = (
+            "for ",
+            "def ",
+            "if ",
+            "while ",
+            "class ",
+            "import ",
+            "return "
+        )
+
+        if any(marker in text for marker in code_markers):
             return text
+
         return ""
 
     def _detect_task(self, text: str) -> str:
         t = text.lower()
-        if "fix" in t or "error" in t:
+
+        if any(x in t for x in ["fix", "error", "debug", "bug", "traceback"]):
             return "debug"
-        if "build" in t:
+
+        if any(x in t for x in ["build", "create", "make", "generate"]):
             return "build"
+
+        if any(x in t for x in ["search", "research", "what is", "find"]):
+            return "research"
+
         return "chat"

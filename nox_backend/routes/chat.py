@@ -86,7 +86,8 @@ async def chat(
                 "analysis": result.get("analysis", {}),
                 "validation": result.get("validation", {}),
                 "synthesis": result.get("synthesis", {}),
-                "report": result.get("report", {}),
+                "summary": result.get("summary"),
+                "report": result.get("report") or result.get("content") or result.get("response"),
                 "data": result,
                 "logs": result.get("logs", []),
             }
@@ -99,8 +100,10 @@ async def chat(
             "action": result.get("action", "chat"),
             "job_id": job_id,
             "data": result.get("data", {}),
-            "meta": result.get("meta", {}),
+            "zip": result.get("zip"),                    # ← Ensure ZIP is passed
+            "project_name": result.get("project_name"),
             "updated_files": result.get("updated_files"),
+            "meta": result.get("meta", {}),
             "diffs": result.get("diffs"),
             "analysis": result.get("analysis"),
             "root_cause": result.get("root_cause"),

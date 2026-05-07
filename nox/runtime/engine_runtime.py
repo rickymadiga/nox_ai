@@ -21,7 +21,6 @@ from ..core.memory import InMemoryHistoryStore
 from .plugin_loader import load_plugins
 from ..core.video_jobs import VideoJobManager
 
-
 # ────────────────────────────────────────────────
 # UTILITY FUNCTIONS
 # ────────────────────────────────────────────────
@@ -214,8 +213,13 @@ class Runtime:
     def clear_logs(self, user_id: str) -> None:
         """Clear logs for a user"""
         self.user_logs[user_id] = []
+        logger.info(f"[LOG] Logs cleared for {user_id}")
 
     # ───── ZIP HANDLING ─────
+    def has_zip_for_user(self, user_id: str) -> bool:
+        """Check if user has a downloadable ZIP"""
+        return user_id in self.last_zip and self.last_zip[user_id].get("size", 0) > 0
+
     def set_zip(self, user_id: str, zip_bytes: bytes, filename: str) -> None:
         """Store ZIP for a user"""
         try:
@@ -340,6 +344,11 @@ class Runtime:
 
             if zip_bytes and zip_bytes != "pending":
                 self.set_zip(user_id, zip_bytes, filename)
+                # Force refresh
+                zip_data = self.get_zip(user_id)
+                if zip_data:
+                    self.add_log(user_id, f"✅ ZIP ready for download: {zip_data['filename']}")
+
                 self.add_log(user_id, f"✅ Build complete: {filename}")
             else:
                 self.add_log(user_id, f"✅ Build complete")
@@ -459,7 +468,7 @@ class Engine:
 
         logger.info("[ENGINE] ✅ Initialized and ready")
     
-        # ────────────────────────────────────────────────
+    # ────────────────────────────────────────────────
     # EXECUTE AGENT (Engine Level Wrapper)
     # ────────────────────────────────────────────────
     async def execute_agent(self, agent_name: str, task: Any, user_id: Optional[str] = None):
@@ -503,26 +512,6 @@ class Engine:
             await self.runtime.bus.publish(message)
         except Exception as e:
             logger.error(f"[ENGINE EMIT ERROR] {e}")
-
-    # ────────────────────────────────────────────────
-    # EXECUTE AGENT
-    # ────────────────────────────────────────────────
-        async def execute_agent(self, name: str, task: Dict[str, Any]) -> Dict[str, Any]:
-            agent = self.get_agent(name)
-            if not agent:
-                return {"error": f"Agent '{name}' not found", "status": "error"}
-
-            try:
-                if hasattr(agent, "run"):
-                    result = agent.run(task)
-                    if asyncio.iscoroutine(result):
-                        result = await result
-                    return result or {"status": "ok"}
-                else:
-                    return {"error": f"Agent '{name}' has no run() method"}
-            except Exception as e:
-                logger.error(f"[AGENT EXECUTION ERROR] {name}: {e}", exc_info=True)
-                return {"error": str(e), "status": "error", "agent": name}
 
     # ────────────────────────────────────────────────
     # 🔗 CHAIN
@@ -571,6 +560,22 @@ class Engine:
             "results": results
         }
 
+    def _extract_project_name(self, prompt: str) -> str:
+        """Extract clean project name from user prompt"""
+        import re
+        
+        # Remove common build phrases
+        clean = re.sub(r'(?i)\b(build|create|make|develop|generate|please|app|website|for me)\b', '', prompt).strip()
+        clean = re.sub(r'[^a-zA-Z0-9\s]', '', clean)  # Remove special chars
+        
+        words = clean.split()[:5]  # Max 5 words
+        project_name = "_".join(words).strip("_")
+        
+        if not project_name or len(project_name) < 3:
+            project_name = "nox_app"
+            
+        return project_name.lower()
+
     # ────────────────────────────────────────────────
     # 🔥 MAIN ENTRY POINT
     # ────────────────────────────────────────────────
@@ -578,7 +583,7 @@ class Engine:
             self, prompt: str, user_id: str = "default_user",
             log_callback=None, context: Optional[Dict[str, Any]] = None,
             mode: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """Main entry point for chat/build requests"""
+        """Main entry point for chat/build requests - Plan Based"""
         result = None
         decision = {}
         action = "chat"
@@ -606,12 +611,8 @@ class Engine:
 
         try:
             lily = self.runtime.get_agent("lily")
-            
-            decision = await lily.run({
-            "prompt": normalized_prompt,
-            "user_id": user_id,
-            "context": pre   # 🔥 IMPORTANT
-        }) or {}
+            if not lily:
+                raise Exception("Lily agent not found")
 
             # Get decision from Lily
             decision = await lily.run({
@@ -623,30 +624,36 @@ class Engine:
 
             action = (decision.get("action") or "chat").lower()
 
-            # ───── UPDATED VALID ACTIONS ─────
-            VALID_ACTIONS = {
-                "chat", "build", "debug", "research", "quote", "confirm",
-                "content_generator"      # ← ADD THIS
-            }
+            # Get billing agent
+            billing = self.runtime.get_agent("billing_agent")
 
-            if action not in VALID_ACTIONS:
-                self.runtime.add_log(user_id, f"⚠️ Invalid action: {action}, defaulting to chat")
-                action = "chat"
+            # ───── BILLING CHECK FOR PAID ACTIONS ─────
+            if action in ["build", "debug", "research", "content_generator"] and billing:
+                check = billing.can_perform_action(user_id, action)
+                if not check.get("allowed", False):
+                    self.runtime.add_log(user_id, f"⛔ Plan limit: {check.get('reason')}")
+                    return {
+                        "response": f"⛔ {check.get('reason', 'Limit reached').replace('_', ' ').title()}\n\n💎 Upgrade your plan to continue.",
+                        "status": "plan_limit",
+                        "action": action,
+                        "logs": self.runtime.get_logs(user_id),
+                    }
 
-            self.runtime.add_log(user_id, f"🎯 Detected action: {action}")
-
-                        # ───── CONTENT GENERATOR ROUTE ─────
+            # ───── CONTENT GENERATOR ─────
             if action == "content_generator":
                 result = await self.execute_agent("content_generator", {
                     "prompt": normalized_prompt,
                     "user_id": user_id
                 }, user_id=user_id)
 
+                if billing:
+                    billing.record_usage(user_id, "content_generator")
+
                 return {
-                    "response": result.get("message"),
+                    "response": result.get("message") or "Content generated",
                     "data": result.get("data"),
                     "job_id": result.get("job_id"),
-                    "type": "video",                    # force type for frontend
+                    "type": "video",
                     "content_type": result.get("type"),
                     "status": "success",
                     "action": "content_generator",
@@ -655,17 +662,16 @@ class Engine:
 
             # ───── RESEARCH ─────
             if action == "research":
-                agent = self.runtime.get_agent("research_agent")
-                if not agent:
-                    raise Exception("Research agent missing")
-
                 result = await self.execute_agent("research_agent", {
-                    "prompt": prompt,
+                    "prompt": normalized_prompt,
                     "user_id": user_id
                 }, user_id=user_id)
 
+                if billing:
+                    billing.record_usage(user_id, "research")
+
                 return {
-                    "response": result.get("summary") or "Research done",
+                    "response": result.get("summary") or result.get("response") or "Research completed",
                     "logs": self.runtime.get_logs(user_id),
                     "status": "success",
                     "type": "research_result",
@@ -681,13 +687,37 @@ class Engine:
                     "mode": mode
                 }, user_id=user_id)
 
+                if billing:
+                    billing.record_usage(user_id, "build")
+
+                # ── Smart Project Name Generation ──
+                project_name = result.get("project_name") or self._extract_project_name(prompt)
+
+                # Get ZIP data
+                zip_data = self.runtime.get_zip(user_id)
+
+                if zip_data:
+                    # Improve filename
+                    clean_name = project_name.replace(" ", "_").lower()
+                    zip_data["filename"] = f"{clean_name}.zip"
+                    zip_data["project_name"] = project_name
+
                 return {
-                    "response": result.get("response") or "Build done",
-                    "zip": self.runtime.get_zip(user_id),
+                    "response": result.get("response") or "✅ Build completed successfully!",
+                    "zip": zip_data,
+                    "project_name": project_name,
                     "logs": self.runtime.get_logs(user_id),
                     "status": "success",
-                    "action": "build"
+                    "action": "build",
+                    "type": "build_result"
                 }
+
+                # Extra safety: log if ZIP is missing
+                if not zip_data:
+                    self.runtime.add_log(user_id, "⚠️ ZIP data not found in runtime")
+                    response_data["response"] += "\n\n⚠️ ZIP not available for download."
+
+                return response_data
 
             # ───── DEBUG ─────
             if action == "debug":
@@ -698,6 +728,9 @@ class Engine:
                     "mode": mode
                 }, user_id=user_id)
 
+                if billing:
+                    billing.record_usage(user_id, "debug")
+
                 return {
                     "type": "code_result",
                     "response": result.get("response", "Debug complete"),
@@ -705,6 +738,15 @@ class Engine:
                     "logs": self.runtime.get_logs(user_id),
                     "status": "success",
                     "action": "debug"
+                }
+
+            # ───── PLAN LIMIT RESPONSE (from Lily) ─────
+            if action == "plan_limit":
+                return {
+                    "response": decision.get("message", "Plan limit reached"),
+                    "status": "plan_limit",
+                    "action": "plan_limit",
+                    "logs": self.runtime.get_logs(user_id),
                 }
 
             # ───── CHAT (DEFAULT) ─────
@@ -737,7 +779,6 @@ class Engine:
         finally:
             elapsed = time.time() - start_time
             self.runtime.add_log(user_id, f"⏱️ Done in {elapsed:.2f}s")
-
 
 # ──────────────────────────────────────────────
 # GLOBAL SINGLETON

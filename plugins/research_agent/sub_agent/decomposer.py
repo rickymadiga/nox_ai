@@ -35,8 +35,3 @@ class DecomposerAgent:
             f"What are the challenges in {query}?",
             f"What are expert opinions on {query}?"
         ]
-
-def register(runtime):
-    agent = DecomposerAgent(runtime)
-    runtime.register_agent("decomposer", agent)
-    logger.info("[SUB-AGENT] ✂️ DecomposerAgent loaded")

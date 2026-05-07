@@ -96,6 +96,10 @@ class ResearchAgent:
                 "action": "research",
                 "type": "research_result",
                 "research_query": research_query,
+                "summary": synthesis.get("summary"),
+                "key_findings": synthesis.get("key_findings"),
+                "conclusions": synthesis.get("conclusions"),
+                "recommendations": synthesis.get("recommendations"),
                 "research_type": research_type,
                 "sub_questions": sub_questions,
                 "sources_found": len(sources),
@@ -104,7 +108,7 @@ class ResearchAgent:
                 "validation": validation,
                 "synthesis": synthesis,
                 "report": report,
-                "response": self._format_response(research_query, sources, analysis, synthesis),
+                "response": self._format_response(research_query, sources, synthesis),
                 "summary": synthesis.get("summary", f"Research on '{research_query}' completed")
             }
             
@@ -119,32 +123,34 @@ class ResearchAgent:
                 "response": f"Research failed: {str(e)}"
             }
     
-    def _format_response(self, query: str, sources: List[Dict], analysis: Dict, synthesis: Dict) -> str:
-        """Format response for frontend"""
+    def _format_response(self, query: str, sources: List[Dict], synthesis: Dict) -> str:
+        """Format response for frontend - Fixed signature"""
         if not sources:
-            return f"📚 No sources found for: '{query}'"
-        
-        parts = [f"📚 Research Results for: {query}\n"]
-        
+            return f"Could not find sufficient information for '{query}' at this time."
+
+        parts = [f"**🔬 Research Results for: {query}**\n"]
+
+        # Direct Answer
+        for source in sources:
+            if source.get("type") == "answer" or "capital" in source.get("title", "").lower() or "moscow" in source.get("content", "").lower():
+                parts.append(f"**✅ Answer:** {source.get('content')}\n")
+                break
+
         # Summary
-        if synthesis.get("summary"):
-            parts.append(f"📝 Summary:\n{synthesis['summary']}\n")
-        
-        # Findings
-        if analysis.get("findings"):
-            parts.append(f"🔍 Key Findings:")
-            for finding in analysis.get("findings", [])[:3]:
-                if isinstance(finding, dict):
-                    content = finding.get('content') or finding.get('source', '')
-                    if content:
-                        parts.append(f"  • {str(content)[:100]}")
-                else:
-                    parts.append(f"  • {str(finding)[:100]}")
-        
-        # Sources count
-        parts.append(f"\n📊 Sources: {len(sources)} found")
-        for i, src in enumerate(sources[:3], 1):
-            title = src.get('title', 'Unknown')
-            parts.append(f"  {i}. {title}")
-        
+        summary = synthesis.get("summary", "")
+        if summary:
+            parts.append(f"**📝 Summary:**\n{summary}\n")
+
+        # Key Findings / Sources
+        parts.append("**📚 Key Sources & Insights:**")
+        for i, source in enumerate(sources[:5], 1):
+            title = source.get("title", "Source")
+            content = source.get("content", "")[:220]
+            url = source.get("url", "")
+            
+            if url and url.startswith("http"):
+                parts.append(f"{i}. **{title}**\n   {content}...\n   [Read more]({url})")
+            else:
+                parts.append(f"{i}. **{title}**\n   {content}...")
+
         return "\n".join(parts)

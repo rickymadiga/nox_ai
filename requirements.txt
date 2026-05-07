@@ -67,7 +67,7 @@ idna==3.11
 ImageIO==2.37.2
 imageio-ffmpeg==0.6.0
 iniconfig==2.3.0
-insightface @ file:///C:/Users/cosmic%20ethic/Desktop/self%20evolving%20AI%20view/insightface-0.7.3-cp312-cp312-win_amd64.whl#sha256=4e58a504433ba5a500d48328689e7d6c69873165653ded7553ce804beb8723db
+insightface==0.7.3
 itsdangerous==2.2.0
 Jinja2==3.1.6
 jiter==0.13.0
