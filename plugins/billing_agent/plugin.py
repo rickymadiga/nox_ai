@@ -1,7 +1,6 @@
 import sqlite3
 from typing import Dict, Optional
 import time
-from datetime import timedelta
 
 DEV_USERS = ["nox", "admin", "cosmic ethic"]
 
@@ -49,12 +48,13 @@ class Billing:
         self._init_db()
 
     # =========================================================
-    # DB INIT + MIGRATION
+    # DB INIT + ROBUST MIGRATION
     # =========================================================
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
 
+            # Create table with all columns
             c.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     user_id TEXT PRIMARY KEY,
@@ -69,15 +69,25 @@ class Billing:
                 )
             """)
 
-            # Safe migrations
-            for column in ["plan_expires_at", "builds_this_month", "debug_this_month", 
-                          "research_this_month", "content_this_month"]:
+            # Robust migrations - add any missing columns
+            migrations = {
+                "plan_expires_at": "REAL",
+                "builds_this_month": "INTEGER DEFAULT 0",
+                "debug_this_month": "INTEGER DEFAULT 0",
+                "research_this_month": "INTEGER DEFAULT 0",
+                "content_this_month": "INTEGER DEFAULT 0",
+                "is_admin": "INTEGER DEFAULT 0"
+            }
+
+            for column, col_type in migrations.items():
                 try:
-                    c.execute(f"ALTER TABLE users ADD COLUMN {column} { 'REAL' if column == 'plan_expires_at' else 'INTEGER DEFAULT 0' }")
+                    c.execute(f"ALTER TABLE users ADD COLUMN {column} {col_type}")
+                    print(f"[Billing] Added missing column: {column}")
                 except sqlite3.OperationalError:
-                    pass
+                    pass  # Column already exists
 
             conn.commit()
+            print("[Billing] ✅ Database schema is up to date")
 
     # =========================================================
     # HELPERS
@@ -99,6 +109,7 @@ class Billing:
         if row:
             return row
 
+        # New user
         now = time.time()
         c.execute("""
             INSERT INTO users (user_id, plan, plan_expires_at, created_at)
@@ -107,7 +118,6 @@ class Billing:
         return ("free", None, 0, 0, 0, 0, 0)
 
     def _reset_monthly_usage(self, user_id: str):
-        """Reset usage and extend plan by 30 days"""
         with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
             new_expiry = time.time() + (30 * 24 * 3600)
@@ -141,18 +151,16 @@ class Billing:
 
             now = time.time()
 
-            # Auto-reset if plan expired
             if expires and now > expires:
                 self._reset_monthly_usage(user_id)
-                # Re-fetch
                 data = self._get_or_create_user(c, user_id)
                 plan, expires, builds, debug, research, content, is_admin = data
 
             usage = {
-                "builds": builds,
-                "debug": debug,
-                "research": research,
-                "content": content
+                "builds": builds or 0,
+                "debug": debug or 0,
+                "research": research or 0,
+                "content": content or 0
             }
 
             return {
@@ -165,7 +173,6 @@ class Billing:
             }
 
     def can_perform_action(self, user_id: str, action: str, complexity: str = "medium") -> Dict:
-        """Check if user can perform action under their plan"""
         if self._is_dev(user_id):
             return {"allowed": True, "reason": "dev_god_mode"}
 
@@ -177,29 +184,26 @@ class Billing:
         usage = status["usage"]
 
         if action == "build":
-            if usage["builds"] >= limits["monthly_builds"]:
+            if usage["builds"] >= limits.get("monthly_builds", 0):
                 return {"allowed": False, "reason": "monthly_build_limit_reached"}
-            if complexity == "complex" and limits["max_complexity"] == "medium":
+            if complexity == "complex" and limits.get("max_complexity") == "medium":
                 return {"allowed": False, "reason": "plan_does_not_support_complex_builds"}
 
         elif action == "debug":
-            if usage["debug"] >= limits["debug_requests"]:
+            if usage["debug"] >= limits.get("debug_requests", 0):
                 return {"allowed": False, "reason": "debug_limit_reached"}
 
         elif action == "research":
-            if usage["research"] >= limits["research_requests"]:
+            if usage["research"] >= limits.get("research_requests", 0):
                 return {"allowed": False, "reason": "research_limit_reached"}
 
         elif action in ["content_generator", "content_gen"]:
-            if usage["content"] >= limits["content_gen"]:
+            if usage["content"] >= limits.get("content_gen", 0):
                 return {"allowed": False, "reason": "content_generation_limit_reached"}
 
-        return {"allowed": True, "reason": "ok", "remaining": 
-                {k: limits[k.replace("content", "content_gen")] - v 
-                 for k, v in usage.items() if k in limits}}
+        return {"allowed": True, "reason": "ok"}
 
     def record_usage(self, user_id: str, action: str):
-        """Record usage after successful action"""
         if self._is_dev(user_id):
             return {"status": "recorded", "dev": True}
 
@@ -213,7 +217,7 @@ class Billing:
 
         field = field_map.get(action)
         if not field:
-            return {"status": "skipped", "reason": "unknown_action"}
+            return {"status": "skipped"}
 
         with sqlite3.connect(self.db_path) as conn:
             c = conn.cursor()
@@ -223,7 +227,6 @@ class Billing:
         return {"status": "recorded"}
 
     def set_plan(self, user_id: str, new_plan: str, days: int = 30) -> Dict:
-        """Admin method to change user plan"""
         if new_plan not in self.PLANS:
             return {"status": "error", "message": "Invalid plan"}
 
@@ -240,11 +243,10 @@ class Billing:
             """, (new_plan, expires, user_id))
             conn.commit()
 
-        return {"status": "success", "plan": new_plan, "expires_at": expires}
+        return {"status": "success", "plan": new_plan}
 
     def add_credits(self, *args, **kwargs):
-        """Deprecated - kept for backward compatibility"""
-        return {"status": "deprecated", "message": "Use subscription plans instead"}
+        return {"status": "deprecated", "message": "Use subscription plans"}
 
 
 def register(runtime):
