@@ -24,7 +24,7 @@ class ContentGeneratorAgent:
         prompt_lower = prompt.lower()
         if any(k in prompt_lower for k in ["review", "quality", "evaluate", "rate this"]):
             return "review"
-        if any(k in prompt_lower for k in ["image", "photo", "picture", "draw"]):
+        if any(k in prompt_lower for k in ["image", "photo", "picture", "draw", "generate image"]):
             return "image"
         if any(k in prompt_lower for k in ["video", "clip", "animation", "generate video"]):
             return "video"
@@ -33,57 +33,85 @@ class ContentGeneratorAgent:
     async def run(self, task: Any) -> Dict[str, Any]:
         if isinstance(task, dict):
             prompt = task.get("prompt", "")
+            enriched_prompt = task.get("enriched_prompt")
+            research_context = task.get("research_context", "")
+            key_findings = task.get("key_findings", [])
+            user_id = task.get("user_id", "default_user")
+            content_type = task.get("content_type") or self.detect_type(prompt)
         else:
             prompt = getattr(task, "prompt", "")
+            enriched_prompt = None
+            research_context = ""
+            key_findings = []
+            user_id = "default_user"
+            content_type = self.detect_type(prompt)
 
         if not prompt:
             return {"agent": "content_generator", "status": "error", "message": "No prompt provided"}
 
-        content_type = self.detect_type(prompt)
-        junior = self.juniors.get(content_type)
+        self.runtime.add_log(user_id, f"🎨 Content Generator → {content_type} mode")
 
+        # ───── ENRICH PROMPT IF RESEARCH IS AVAILABLE ─────
+        if research_context and len(research_context) > 30:
+            final_prompt = enriched_prompt or f"""
+            {prompt}
+
+            Use the following researched information to create accurate and high-quality content:
+
+            {research_context}
+
+            Key Facts:
+            {chr(10).join([f"• {fact}" for fact in key_findings[:10]])}
+            """.strip()
+            
+            used_research = True
+            self.runtime.add_log(user_id, f"🔬 Research context integrated for {content_type}")
+        else:
+            final_prompt = prompt
+            used_research = False
+
+        junior = self.juniors.get(content_type)
         if not junior:
             return {"agent": "content_generator", "status": "error", "message": f"No junior for {content_type}"}
 
+        # Execute junior with full context
         result = await junior.execute({
-            "prompt": prompt,
-            "content": prompt,
-            "type": content_type
+            "prompt": final_prompt,
+            "original_prompt": prompt,
+            "content": final_prompt,
+            "type": content_type,
+            "research_context": research_context,
+            "key_findings": key_findings,
+            "user_id": user_id,
+            "used_research": used_research
         })
 
+        # ───── FINAL RESPONSE ─────
         if content_type == "video":
-            job_id = result.get("data", {}).get("job_id")
-            if job_id and self.video_manager:
-                # Poll for completion (with timeout)
-                max_wait = 30
-                elapsed = 0
-                while elapsed < max_wait:
-                    await asyncio.sleep(2)
-                    job_status = self.video_manager.get(job_id)
-                    elapsed += 2
-            
-                    if job_status.get("status") == "done":
-                        file_path = job_status.get("file_path")
-                        return {
-                            "agent": "content_generator",
-                            "status": "done",
-                            "type": "video",
-                            "message": "🎬 Video generated successfully!",
-                            "job_id": job_id,
-                            "data": {
-                                "job_id": job_id,
-                                "file_path": file_path,
-                                "download_url": f"/api/video/download/{job_id}",
-                                "prompt": prompt
-                            }
-                        }
-        
-                # Timeout
-                return {
-                    "agent": "content_generator",
-                    "status": "processing",
-                    "type": "video",
-                    "message": "🎬 Video generation in progress...",
-                    "job_id": job_id,
-                    "data": result.get("data", {})
-                }
+            return {
+                "agent": "content_generator",
+                "status": result.get("status", "processing"),
+                "type": "video",
+                "message": "🎬 Video generation started" + (" with research" if used_research else ""),
+                "job_id": result.get("data", {}).get("job_id"),
+                "research_used": used_research,
+                "data": result.get("data", {})
+            }
+        elif content_type == "image":
+            return {
+                "agent": "content_generator",
+                "status": "success",
+                "type": "image",
+                "message": "🖼️ Image generated" + (" with research context" if used_research else ""),
+                "data": result.get("data", {}),
+                "research_used": used_research
+            }
+        else:
+            return {
+                "agent": "content_generator",
+                "status": "success",
+                "type": content_type,
+                "message": f"✅ {content_type.capitalize()} generated successfully",
+                "data": result.get("data", result),
+                "research_used": used_research
+            }

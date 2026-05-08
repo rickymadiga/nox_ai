@@ -168,35 +168,43 @@ class Lily:
 
     def classify_intent(self, text: str, user_id: Optional[str] = None) -> str:
         """
-        Improved intent classification with priority and confidence.
+        Improved intent classification with video + research awareness.
         """
         if not text or not text.strip():
             return "chat"
 
         t = text.lower().strip()
         original_text = text.strip()
-    
-        # ───── HELPER FUNCTIONS ─────
+
         def contains_any(text: str, words: set) -> bool:
             return any(word in text for word in words)
 
-        # ───── PRIORITY 1: DEBUG (High precision - moved up) ─────
+        # ───── PRIORITY 1: DEBUG ─────
         if contains_any(t, self.DEBUG_WORDS):
-            # Avoid false positive when user wants to "build a debug tool" or "fix my app"
-            build_context = contains_any(t, self.BUILD_PHRASES)
-            if not build_context or any(phrase in t for phrase in ["fix bug", "debug code", "fix error", "fix this code"]):
-                logger.info("[LILY] Intent → debug (high confidence)")
+            if not contains_any(t, self.BUILD_PHRASES) or any(phrase in t for phrase in ["fix bug", "debug code", "fix error"]):
+                logger.info("[LILY] Intent → debug")
                 return "debug"
 
         # ───── PRIORITY 2: RESEARCH / QUESTIONS ─────
         is_question = "?" in original_text or any(q in t for q in ["what", "who", "when", "where", "why", "how", "explain", "tell me"])
-    
+        
         if (contains_any(t, self.RESEARCH_WORDS) or 
             is_question and len(t.split()) >= 3):
             logger.info("[LILY] Intent → research")
             return "research"
 
-        # ───── PRIORITY 3: MATH / CALCULATION ─────
+        # ───── PRIORITY 3: VIDEO WITH RESEARCH ─────
+        video_keywords = {"video", "make video", "generate video", "create video", "youtube video"}
+        if contains_any(t, video_keywords):
+            # If video is about a specific topic/fact → use research first
+            if any(word in t for word in ["about", "on", "explaining", "story of", "history of", "facts about", "documentary"]):
+                logger.info("[LILY] Intent → video_with_research")
+                return "video_with_research"
+            else:
+                logger.info("[LILY] Intent → content_generation (video)")
+                return "content_generation"
+
+        # ───── PRIORITY 4: MATH ─────
         math_pattern = re.compile(r'\b(\d+[\s+\-*/^]+\d+|\d+\s*(plus|minus|times|divided by|multiplied by)\s*\d+)\b')
         if (contains_any(t, {"calculate", "compute", "sum", "total", "how much"}) or 
             math_pattern.search(t) or 
@@ -204,28 +212,25 @@ class Lily:
             logger.info("[LILY] Intent → math")
             return "math"
 
-        # ───── PRIORITY 4: BUILD / CREATE ─────
+        # ───── PRIORITY 5: BUILD ─────
         if contains_any(t, self.BUILD_PHRASES):
             logger.info("[LILY] Intent → build")
             return "build"
 
-        # ───── PRIORITY 5: CONTENT GENERATION ─────
-        content_keywords = {"generate image", "create image", "make image", "draw", 
-                           "generate video", "create video", "story", "poem", "song lyrics"}
+        # ───── PRIORITY 6: GENERAL CONTENT GENERATION ─────
+        content_keywords = {"generate image", "create image", "make image", "draw", "story", "poem", "song lyrics"}
         if contains_any(t, content_keywords) or any(kw in t for kw in ["image of", "picture of", "photo of"]):
             logger.info("[LILY] Intent → content_generation")
             return "content_generation"
 
-        # ───── PRIORITY 6: REFINE / CONFIRM (Context aware) ─────
+        # ───── PRIORITY 7: REFINE / CONFIRM ─────
         if user_id and user_id in self.system_state.get("pending_quotes", {}):
             if contains_any(t, self.CONFIRM_WORDS):
-                logger.info("[LILY] Intent → confirm")
                 return "confirm"
             if contains_any(t, self.REFINE_WORDS):
-                logger.info("[LILY] Intent → refine")
                 return "refine"
 
-        # ───── DEFAULT: CHAT ─────
+        # ───── DEFAULT ─────
         logger.info(f"[LILY] Intent → chat (fallback) | Text: {t[:80]}...")
         return "chat"
 
@@ -345,10 +350,11 @@ class Lily:
                 return self._plan_limit_response("content_generation")
         
             return {
-                "action": "content_generator",
+                "action": "video_with_research" if intent == "video_with_research" else "content_generation",
                 "prompt": user_input,
                 "context": context,
-                "message": "🎨 Generating your content..."
+                "message": "🔬 Researching + 🎬 Generating informed video...",
+                "needs_research": True
             }
 
         elif intent == "confirm" and user_id in self.system_state.get("pending_quotes", {}):

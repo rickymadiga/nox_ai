@@ -660,6 +660,57 @@ class Engine:
                     "logs": self.runtime.get_logs(user_id),
                 }
 
+            # ───── VIDEO WITH RESEARCH (Smart Video) ─────
+            if action == "video_with_research":
+                self.runtime.add_log(user_id, "🔬 Researching topic before video generation...")
+
+                # Step 1: Run Research First
+                research_result = await self.execute_agent("research_agent", {
+                    "prompt": normalized_prompt,
+                    "user_id": user_id
+                }, user_id=user_id)
+
+                # Step 2: Enrich the prompt with research
+                research_context = research_result.get("summary") or research_result.get("response", "")
+                key_findings = research_result.get("key_findings", [])
+
+                enriched_prompt = f"""
+                Topic: {normalized_prompt}
+
+                Research Context:
+                {research_context}
+
+                Key Facts:
+                {chr(10).join(['• ' + str(f) for f in key_findings[:8]])}
+                """
+
+                self.runtime.add_log(user_id, f"✅ Research complete. Generating informed video...")
+
+                # Step 3: Pass enriched data to Video/Content Generator
+                result = await self.execute_agent("content_generator", {
+                    "prompt": normalized_prompt,
+                    "enriched_prompt": enriched_prompt,
+                    "research_context": research_context,
+                    "key_findings": key_findings,
+                    "user_id": user_id,
+                    "content_type": "video"
+                }, user_id=user_id)
+
+                if billing:
+                    billing.record_usage(user_id, "content_generator")
+
+                return {
+                    "response": result.get("message") or "🎬 Video generated with research context",
+                    "data": result.get("data"),
+                    "job_id": result.get("job_id"),
+                    "research_summary": research_context[:300] + "..." if len(research_context) > 300 else research_context,
+                    "type": "video",
+                    "content_type": "video",
+                    "status": "success",
+                    "action": "video_with_research",
+                    "logs": self.runtime.get_logs(user_id),
+                }
+
             # ───── RESEARCH ─────
             if action == "research":
                 result = await self.execute_agent("research_agent", {
@@ -711,13 +762,6 @@ class Engine:
                     "action": "build",
                     "type": "build_result"
                 }
-
-                # Extra safety: log if ZIP is missing
-                if not zip_data:
-                    self.runtime.add_log(user_id, "⚠️ ZIP data not found in runtime")
-                    response_data["response"] += "\n\n⚠️ ZIP not available for download."
-
-                return response_data
 
             # ───── DEBUG ─────
             if action == "debug":

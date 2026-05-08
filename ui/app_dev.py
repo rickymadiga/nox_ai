@@ -7,7 +7,7 @@ from collections import deque
 # ═════════════════════════════════════════════
 # CONFIG
 # ═════════════════════════════════════════════
-API_BASE = "https://nox-ai-fgrt.onrender.com/api"
+API_BASE = "http://localhost:8000/api"
 
 st.set_page_config(
     layout="wide", 
@@ -50,16 +50,12 @@ def get_headers():
 
 
 def api_post(endpoint, data):
-    """Make POST request to API"""
+    """Make POST request to API with better token handling"""
     try:
         headers = get_headers()
         
-        # Ensure proper URL formatting
-        clean_endpoint = endpoint if endpoint.startswith('/') else f"/{endpoint}"
-        url = f"{API_BASE.rstrip('/')}{clean_endpoint}"
-        
         response = requests.post(
-            url,
+            f"{API_BASE}{endpoint}",
             json=data,
             headers=headers,
             timeout=45
@@ -101,12 +97,8 @@ def api_post(endpoint, data):
 def api_get(endpoint):
     """Make GET request to API"""
     try:
-        # Ensure proper URL formatting
-        clean_endpoint = endpoint if endpoint.startswith('/') else f"/{endpoint}"
-        url = f"{API_BASE.rstrip('/')}{clean_endpoint}"
-
         response = requests.get(
-            url,
+            f"{API_BASE}{endpoint}",
             headers=get_headers(),
             timeout=30
         )
@@ -233,85 +225,241 @@ def show_landing_page():
     st.caption("Login to start building with AI agents")
 
 def show_chat_page():
-    """Chat page - Clean & Fixed Version"""
+    """Chat page"""
     st.title("⚡ NOX Workspace - Chat")
 
-    # Mobile-friendly styling
-    st.markdown("""
-        <style>
-            .stMarkdown, .stExpander, .element-container {
-                max-width: 100% !important;
-            }
-            .stButton button { width: 100%; }
-        </style>
-    """, unsafe_allow_html=True)
+    # Mobile Optimization
+    if st.session_state.get("page") == "chat":
+        st.markdown("""
+            <style>
+                .stMarkdown, .stExpander, .element-container {
+                    max-width: 100% !important;
+                }
+                .stButton button {
+                    width: 100%;
+                }
+                @media (max-width: 768px) {
+                    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
+                        font-size: 1.4rem !important;
+                    }
+                }
+            </style>
+        """, unsafe_allow_html=True)
 
-    # Initialize toggle state
-    if "show_logs" not in st.session_state:
-        st.session_state.show_logs = True
+    left, right = st.columns([3, 1], gap="medium")
 
-    # ───── LAYOUT ─────
-    if st.session_state.show_logs:
-        col_chat, col_logs = st.columns([4, 1], gap="medium")
-    else:
-        col_chat = st.container()
-        col_logs = None
+    # RIGHT PANEL → LIVE LOGS
+    with right:
+        st.subheader("📊 Live Activity")
+        
+        log_container = st.container(border=True, height=500)
+        
+        with log_container:
+            if st.session_state.live_logs:
+                for i, log in enumerate(st.session_state.live_logs, 1):
+                    if isinstance(log, dict):
+                        log_text = log.get("message", str(log))
+                    else:
+                        log_text = str(log)
+                    
+                    if "error" in log_text.lower() or "❌" in log_text:
+                        st.error(f"{i}. {log_text}")
+                    elif "warning" in log_text.lower() or "⚠️" in log_text:
+                        st.warning(f"{i}. {log_text}")
+                    elif "success" in log_text.lower() or "✅" in log_text:
+                        st.success(f"{i}. {log_text}")
+                    else:
+                        st.text(f"{i}. {log_text}")
+            else:
+                st.info("💤 Waiting for activity...")
+        
+        if st.button("🔄 Refresh Logs", width="stretch"):
+            st.rerun()
 
-    # ==================== LIVE LOGS (Right Sidebar) ====================
-    if col_logs:
-        with col_logs:
-            st.subheader("📊 Live Activity")
-            
-            log_container = st.container(border=True, height=520)
-            with log_container:
-                if st.session_state.live_logs:
-                    for log in list(st.session_state.live_logs)[-15:]:
-                        log_text = log.get("message", str(log)) if isinstance(log, dict) else str(log)
-                        if "error" in log_text.lower() or "❌" in log_text:
-                            st.error(log_text)
-                        elif "warning" in log_text.lower() or "⚠️" in log_text:
-                            st.warning(log_text)
-                        elif "success" in log_text.lower() or "✅" in log_text:
-                            st.success(log_text)
-                        else:
-                            st.text(log_text)
-                else:
-                    st.info("💤 No activity yet...")
-
-            if st.button("🗑️ Clear Logs", width="stretch"):
-                st.session_state.live_logs.clear()
-                st.rerun()
-
-    # ==================== CHAT AREA ====================
-    with (col_chat if col_logs else st.container()):
-        st.subheader("💬 Conversation")
-
-        # Define render_response BEFORE using it
+    # LEFT PANEL → CHAT
+    with left:
+        st.subheader("💬 Chat History")
+        
         def render_response(res):
-            """Render API response"""
-            if not res:
-                st.error("❌ Invalid response")
-                return
+            """Render API response - Enhanced with Video support"""
 
             action = (res.get("action") or res.get("type") or "chat").lower().strip()
             response_type = res.get("type", "message")
-
-            if res.get("zip"):
+            
+            # Force build_result type if zip is present
+            if res.get("zip") and not action.startswith("build"):
                 action = "build"
+                response_type = "build_result"
 
-            icons = {"chat": "💬", "build": "📦", "debug": "🔧", 
-                    "research": "🔬", "content_generator": "🎨"}
-            icon = icons.get(action, "💬")
+            if not res:
+                st.error("❌ Invalid response")
+                return
+            
+            action = (res.get("action") or res.get("type") or "chat").lower().strip()
+            response_type = res.get("type", "message")
+            job_id = res.get("job_id") or res.get("data", {}).get("job_id")
+            video_url = res.get("data", {}).get("video_url")
 
-            st.markdown(f"### {icon} {action.upper()}")
+            # Icons
+            icons = {
+                "chat": "💬",
+                "quote": "💰",
+                "build": "📦",
+                "debug": "🔧",
+                "research": "🔬",
+                "content_generator": "🎨",
+                "video": "🎬",
+                "image": "🖼️",
+                "message": "💬",
+            }
+            
+            icon = icons.get(action, icons.get(response_type, "❓"))
+            
+            st.markdown(f"### {icon} {action.upper() or response_type.upper()}")
 
+            # Main response text
             response_text = res.get("response") or res.get("message") or "No response text"
             st.write(response_text)
 
-            # Build Download
-            if action == "build" or res.get("zip"):
+            # Status and Type
+            col1, col2 = st.columns(2)
+            with col1:
+                st.caption(f"📊 Status: `{res.get('status', 'unknown')}`")
+            with col2:
+                st.caption(f"📋 Type: `{response_type}`")
+
+            # ==================== VIDEO JOB HANDLING ====================
+            if action in ["content_generator", "video"] or response_type == "video":
+                st.markdown("### 🎬 Video Generation Job")
+                
+                job_id = res.get("job_id") or res.get("data", {}).get("job_id")
+                video_url = res.get("data", {}).get("video_url") or res.get("video_url")
+
+                if job_id:
+                    st.success(f"**Job ID:** `{job_id}`")
+                
+                if video_url:
+                    st.success("✅ Video Ready!")
+                    
+                    # Play video
+                    try:
+                        st.video(video_url)
+                    except Exception as play_error:
+                        st.warning(f"Player error: {play_error}")
+                        st.markdown(f"[▶️ Open Video]({video_url})")
+                    
+                    # DOWNLOAD - Force byte download
+                    try:
+                        import requests
+                        with st.spinner("Preparing full video download..."):
+                            video_bytes = requests.get(video_url, timeout=30).content
+                        
+                        st.download_button(
+                            label="⬇️ Download Full MP4",
+                            data=video_bytes,
+                            file_name=f"video_{job_id}.mp4",
+                            mime="video/mp4",
+                            use_container_width="stretch",
+                        )
+                    except Exception as download_error:
+                        st.error(f"Download failed: {download_error}")
+                        st.markdown(f"[Direct Link]({video_url})")
+                else:
+                    st.info("⏳ Video is being generated...")
+                    with st.expander("Job Details"):
+                        st.json(res.get("data", {}))      
+
+            # ==================== IMAGE ====================
+            elif action == "content_generator" and response_type == "image":
+                data = res.get("data", {})
+                if data.get("url"):
+                    st.image(data["url"], caption="Generated Image", use_column_width="content")
+
+            # ==================== DEBUG / CODE ====================
+            elif action in ["debug", "code_result"]:
+                if res.get("analysis"):
+                    st.markdown("#### 🔍 Analysis")
+                    st.write(res.get("analysis"))
+                if res.get("root_cause"):
+                    st.markdown("#### 🎯 Root Cause")
+                    st.error(res.get("root_cause"))
+                updated_files = res.get("updated_files", {})
+                if updated_files:
+                    with st.expander(f"📄 Updated Files ({len(updated_files)})"):
+                        for filename, code in updated_files.items():
+                            st.code(code, language="python", line_numbers=True)
+
+            # ==================== RESEARCH - MOBILE OPTIMIZED ====================
+            elif action == "research" or response_type == "research_result":
+                st.markdown("### 🔬 Research Results")
+                
+                query = res.get("research_query") or res.get("prompt", "Your search")
+                st.markdown(f"**Query:** `{query}`")
+                
+                # Main Response / Answer
+                main_text = res.get("response", "")
+                if main_text and len(main_text) > 10:
+                    st.markdown(main_text)
+                
+                # Summary
+                summary = res.get("summary") or res.get("data", {}).get("summary", "")
+                if summary:
+                    st.markdown(summary)
+                
+                # Key Findings
+                key_findings = res.get("key_findings", []) or res.get("data", {}).get("key_findings", [])
+                if key_findings:
+                    st.markdown("#### 🔑 Key Findings")
+                    for finding in key_findings[:5]:
+                        st.markdown(f"• {finding}")
+                
+                # Sources - Mobile Friendly
+                sources = res.get("sources", []) or res.get("data", {}).get("sources", [])
+                if sources:
+                    with st.expander(f"📚 Sources ({len(sources)})", expanded=False):
+                        for i, source in enumerate(sources[:8], 1):
+                            title = source.get("title", "Source")
+                            content = (source.get("content") or "")[:220]
+                            url = source.get("url", "")
+                            
+                            st.markdown(f"**{i}. {title}**")
+                            if content:
+                                st.caption(content + "...")
+                            
+                            if url and url.startswith("http"):
+                                st.markdown(f"[🔗 Open Source]({url})")
+                            st.divider()
+                
+                # Conclusions & Recommendations - Better on mobile
+                conclusions = res.get("conclusions", []) or res.get("data", {}).get("conclusions", [])
+                if conclusions:
+                    st.markdown("#### 🎯 Conclusions")
+                    for c in conclusions:
+                        st.success(f"• {c}")
+                
+                recommendations = res.get("recommendations", []) or res.get("data", {}).get("recommendations", [])
+                if recommendations:
+                    st.markdown("#### 💡 Recommendations")
+                    for r in recommendations:
+                        st.info(f"• {r}")
+                
+                # Raw Data (collapsed by default)
+                with st.expander("🔍 Debug - Full Data", expanded=False):
+                    st.json({k: v for k, v in res.items() if k != "logs"})
+
+            # ==================== BUILD ====================
+            if action == "build" or response_type == "build_result" or res.get("zip"):
                 zip_data = res.get("zip")
                 if zip_data and isinstance(zip_data, dict) and zip_data.get("data"):
+                    st.markdown("#### 📦 Build Output - Ready to Download")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("📁 Filename", zip_data.get("filename", "nox_app.zip"))
+                    with col2:
+                        size_kb = zip_data.get("size", 0) / 1024
+                        st.metric("💾 Size", f"{size_kb:.2f} KB")
+                    
                     try:
                         import base64
                         zip_bytes = base64.b64decode(zip_data.get("data", ""))
@@ -320,17 +468,32 @@ def show_chat_page():
                             data=zip_bytes,
                             file_name=zip_data.get("filename", "nox_app.zip"),
                             mime="application/zip",
-                            width="stretch"
+                            width="stretch",
+                            key=f"download_{int(time.time())}"  # prevent duplicate key
                         )
-                    except:
-                        pass
+                        st.success("✅ ZIP Ready!")
+                    except Exception as e:
+                        st.error(f"❌ Download preparation failed: {str(e)}")
+                        if zip_data.get("download_url"):
+                            st.markdown(f"[🔗 Direct Download]({zip_data['download_url']})")
+                else:
+                    st.warning("⚠️ Build completed but ZIP data is missing")
 
-            # Price
+            # ==================== LOGS ====================
+            logs = res.get("logs", [])
+            if logs:
+                with st.expander(f"📜 Logs ({len(logs)})", expanded=False):
+                    for log in logs[-30:]:
+                        if isinstance(log, dict):
+                            st.text(log.get("message", str(log)))
+                        else:
+                            st.text(str(log))
+
             if res.get("price"):
                 st.warning(f"💰 Cost: {res.get('price')} credits")
-
-        # Render previous messages
-        for msg in st.session_state.messages:
+        
+        # Render chat history
+        for i, msg in enumerate(st.session_state.messages):
             with st.chat_message("user"):
                 st.write(f"**You:** {msg['prompt']}")
             
@@ -339,33 +502,29 @@ def show_chat_page():
             
             st.divider()
 
-        # New user input
-        prompt = st.chat_input("Ask NOX anything...")
+    st.divider()
 
-        if prompt:
-            with st.chat_message("user"):
-                st.write(f"**You:** {prompt}")
+    prompt = st.chat_input("Ask NOX...")
+
+    if prompt:
+        with st.chat_message("user"):
+            st.write(f"**You:** {prompt}")
+        
+        with st.chat_message("assistant"):
+            with st.spinner("⚙️ NOX is thinking..."):
+                res = api_post("/chat/message", {"prompt": prompt})
             
-            with st.chat_message("assistant"):
-                with st.spinner("⚙️ NOX is thinking..."):
-                    res = api_post("/chat/message", {"prompt": prompt})
-                
-                if res:
-                    st.session_state.messages.append({
-                        "prompt": prompt,
-                        "response": res,
-                        "timestamp": datetime.now().isoformat()
-                    })
-                    st.session_state.last_response = res
-                    render_response(res)
-                    st.rerun()
-                else:
-                    st.error("❌ Failed to get response")
-
-    # Toggle button at bottom
-    if st.button("📊 Toggle Live Logs", key="toggle_logs"):
-        st.session_state.show_logs = not st.session_state.show_logs
-        st.rerun()
+            if res:
+                st.session_state.messages.append({
+                    "prompt": prompt,
+                    "response": res,
+                    "timestamp": datetime.now().isoformat()
+                })
+                st.session_state.last_response = res
+                render_response(res)
+                st.rerun()
+            else:
+                st.error("❌ Failed to get response")
 
 
 def show_signup_page():
